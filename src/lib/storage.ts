@@ -259,7 +259,7 @@ export function createWithdrawOrder(userId: string, amount: number): { success: 
   if (!user.bankCard) return { success: false, message: 'Please bind your bank card first' };
   const activeProducts = getUserProducts(userId).filter(p => p.status === 'active');
   if (activeProducts.length === 0) return { success: false, message: 'You must have at least one active product to withdraw' };
-  if (amount < 6000) return { success: false, message: 'Minimum withdrawal is UGX 6,000' };
+  if (amount < 9000) return { success: false, message: 'Minimum withdrawal is UGX 9,000' };
   if (amount > user.balance) return { success: false, message: 'Insufficient balance' };
   const fee = Math.floor(amount * 0.16);
   const received = amount - fee;
