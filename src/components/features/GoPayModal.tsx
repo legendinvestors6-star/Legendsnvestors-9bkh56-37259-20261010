@@ -36,8 +36,8 @@ export default function GoPayModal({ order, onClose, onConfirmPaid }: Props) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const mtnUssdCode = `*185*1#
-  const airtelUssdCode = `*185*9#then waitfor some mins and put {AIRTEL_MERCHANT} {order.amount}`;and your pin
+  const mtnUssdCode = `*165*1*1*${MTN_ACCOUNT}*${order.amount}#`;
+  const airtelUssdCode = `*185*9*${AIRTEL_MERCHANT}*${order.amount}#`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.9)' }}>
