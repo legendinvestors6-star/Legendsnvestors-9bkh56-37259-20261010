@@ -6,7 +6,7 @@ interface Props {
 }
 
 const messages = [
-  '1. Registration Reward: 6,000 UGX',
+  '1. Registration Reward: 9,000 UGX',
   '2. Daily Check-in Reward: 300 UGX',
   '3. Daily return rate of 27%-45%, recover all funds in 2-3 days and continue to profit.',
   '4. Invite others to invest and immediately receive a cash reward equal to 40% of their investment amount.',
