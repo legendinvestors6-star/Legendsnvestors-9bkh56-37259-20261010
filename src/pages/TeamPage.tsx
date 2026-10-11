@@ -16,7 +16,7 @@ export default function TeamPage() {
   const commissions = getTeamCommissions(currentUser.id);
   const totalDeposit = 0;
   const totalTeam = level1.length + level2.length + level3.length;
-  const referralUrl = `${window.location.origin}/register?ref=${currentUser.referralCode || currentUser.id};`
+    const referralUrl = `${window.location.origin}/register?ref=${currentUser?.referralCode || currentUser?.id || ''}`;
 
   const copy = () => {
     navigator.clipboard.writeText(referralUrl);
