@@ -8,6 +8,7 @@ import { REGISTRATION_BONUS } from '@/constants/products';
 export default function RegisterPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const refCode = params.get('ref') || '';
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
