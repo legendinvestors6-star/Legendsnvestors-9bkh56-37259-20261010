@@ -11,7 +11,6 @@ export default function RegisterPage() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [refCode, setRefCode] = useState(params.get('ref') || '');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -20,6 +19,9 @@ export default function RegisterPage() {
     if (password !== confirm) { toast.error('Passwords do not match'); return; }
     if (password.length < 6) { toast.error('Password must be at least 6 characters'); return; }
     setLoading(true);
+    if (refCode) {
+  localStorage.setItem('referred_by', refCode);
+    }
     setTimeout(() => {
       const result = registerUser(phone.trim(), password, refCode.trim() || undefined);
       if (result.success && result.user) {
