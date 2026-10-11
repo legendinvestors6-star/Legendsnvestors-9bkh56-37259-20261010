@@ -16,8 +16,7 @@ export default function TeamPage() {
   const commissions = getTeamCommissions(currentUser.id);
   const totalDeposit = 0;
   const totalTeam = level1.length + level2.length + level3.length;
-
-  const referralUrl = `${window.location.origin}/register?ref=${currentUser.referralCode}`;
+const referralUrl = `https://legendsnvestors-9bkh56-37259-20261010.vercel.app/register?ref=${currentUser.referralCode || currentUser.id}`
 
   const copy = () => {
     navigator.clipboard.writeText(referralUrl);
