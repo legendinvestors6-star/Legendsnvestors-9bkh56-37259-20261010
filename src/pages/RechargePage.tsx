@@ -5,21 +5,27 @@ export default function Recharge(){
  const [phone,setPhone]=useState("")
  const [loading,setLoading]=useState(false)
 
- const MIN = 30000
+const pay = () => {
+  if(Number(amount) < 30000){ alert("Minimum UGX 30,000"); return }
+  if(phone.length < 10){ alert("Enter phone number"); return }
 
- const handleRecharge = ()=>{
-  const num = Number(amount)
-  if(!amount || isNaN(num)){
-    alert("Enter amount")
-    return
+  const newOrder = {
+    id: Date.now(),
+    amount: Number(amount),
+    phone: phone,
+    status: "pending", // <-- starts as PENDING
+    date: new Date().toLocaleString(),
+    user: phone
   }
-  if(num < MIN){
-    alert(`Minimum recharge is UGX ${MIN.toLocaleString()}`)
-    return
-  }
-  if(!phone || phone.length < 10){
-    alert("Enter valid phone number")
-    return
+
+  // Save to pending list
+  const existing = JSON.parse(localStorage.getItem("recharges") || "[]")
+  existing.unshift(newOrder)
+  localStorage.setItem("recharges", JSON.stringify(existing))
+
+  alert("Recharge order created! Status: PENDING")
+  window.location.href = "/recharge-history" // go to history page
+}
   }
   setLoading(true)
   setTimeout(()=>{setLoading(false); alert(`Recharge UGX ${num.toLocaleString()} for ${phone} - waiting verification`)},1000)
