@@ -3,8 +3,9 @@ export default async function handler(req, res) {
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Method not allowed' });
     }
-
-    const { amount, phoneNumber } = req.body || {};
+    const body = req.body || {};
+    const amount = body.amount;
+    const phoneNumber = body.phoneNumber;
     
     if (!amount || !phoneNumber) {
       return res.status(400).json({ error: 'Missing amount or phone' });
@@ -17,13 +18,10 @@ export default async function handler(req, res) {
       formattedPhone = '+256' + formattedPhone;
     }
 
-    // Detect provider from phone - 075/070 = airtel, else mtn
     let provider = 'mtn';
-    if (formattedPhone.includes('75') || formattedPhone.includes('70') || formattedPhone.startsWith('+25675') || formattedPhone.startsWith('+25670')) {
-      // simple check, you can keep your original logic
-      if (phoneNumber.toString().startsWith('075') || phoneNumber.toString().startsWith('070') || phoneNumber.toString().startsWith('75') || phoneNumber.toString().startsWith('70')) {
-        provider = 'airtel';
-      }
+    const raw = phoneNumber.toString();
+    if (raw.startsWith('075') || raw.startsWith('070') || raw.startsWith('75') || raw.startsWith('70')) {
+      provider = 'airtel';
     }
 
     const apiKey = process.env.PESAJET_API_KEY;
@@ -55,9 +53,8 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json(data);
-
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Server crash: ' + err.message });
   }
-                                               }
+}
