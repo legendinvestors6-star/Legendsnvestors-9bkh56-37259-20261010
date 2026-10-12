@@ -4,67 +4,59 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
   if (req.method === 'OPTIONS') return res.status(200).end();
-  
-  if (req.method === 'GET') {
-    return res.status(200).json({ 
-      ok: true, 
-      message: 'Vite API is live',
-      hasKey: !!process.env.PESAJET_API_KEY,
-      keyPrefix: process.env.PESAJET_API_KEY ? process.env.PESAJET_API_KEY.substring(0, 5) : 'none'
-    });
-  }
+  if (req.method === 'GET') return res.status(200).json({ ok: true, hasKey: !!process.env.PESAJET_API_KEY });
 
   try {
-    // Vite needs manual body reading
-    let rawBody = '';
-    for await (const chunk of req) {
-      rawBody += chunk;
+    // FIX: Vercel already parses body in some runtimes, use it if exists
+    let body = req.body;
+    
+    // If body is not parsed, parse manually
+    if (!body || Object.keys(body).length === 0) {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const raw = Buffer.concat(chunks).toString();
+      try { body = JSON.parse(raw); } catch { body = {}; }
     }
     
-    let body = {};
-    try { body = JSON.parse(rawBody || '{}'); } catch {}
-    
-    const amount = body.amount;
-    const phoneNumber = body.phoneNumber;
+    // If still string, parse again
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch {}
+    }
+
+    console.log('Received body:', JSON.stringify(body));
+
+    const amount = body?.amount;
+    const phoneNumber = body?.phoneNumber;
 
     if (!amount || !phoneNumber) {
-      return res.status(400).json({ error: 'Missing amount or phoneNumber', received: body });
+      console.log('Missing fields, body was:', body);
+      return res.status(400).json({ error: 'Missing amount/phone', receivedBody: body });
     }
 
     let phone = phoneNumber.toString().trim();
     if (phone.startsWith('0')) phone = '+256' + phone.slice(1);
     if (!phone.startsWith('+')) phone = '+256' + phone;
 
-    let provider = 'mtn';
-    if (phoneNumber.toString().startsWith('075') || phoneNumber.toString().startsWith('070') || phone.startsWith('+25675') || phone.startsWith('+25670')) {
-      provider = 'airtel';
-    }
-
+    let provider = phone.includes('75') || phone.includes('70') ? 'airtel' : 'mtn';
     const apiKey = process.env.PESAJET_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'PESAJET_API_KEY not set in Vercel' });
 
-    const response = await fetch('https://payments.pesajet.com/api/v1/payments', {
+    console.log('Calling PesaJet with:', { amount, phone, provider, hasKey: !!apiKey });
+
+    const r = await fetch('https://payments.pesajet.com/api/v1/payments', {
       method: 'POST',
       headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        amount: Number(amount),
-        phoneNumber: phone,
-        provider: provider,
-        reference: 'LEGEND-' + Date.now(),
-        currency: 'UGX'
-      })
+      body: JSON.stringify({ amount: Number(amount), phoneNumber: phone, provider, reference: 'LEGEND-'+Date.now(), currency: 'UGX' })
     });
 
-    const text = await response.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = { raw: text }; }
+    const text = await r.text();
+    console.log('PesaJet response:', r.status, text);
 
-    return res.status(response.status).json(data);
+    let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
+    return res.status(r.status).json({ pesajet_status: r.status, pesajet_data: data, phone_sent: phone });
 
   } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: 'Server error: ' + e.message });
+    console.error('Crash:', e);
+    return res.status(500).json({ error: e.message, stack: e.stack });
   }
 }
