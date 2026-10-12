@@ -1,4 +1,5 @@
-export default async function handler(req, res) {
+console.log("KEY CHECK:", process.env.PESAJET_API_KEY?.slice(0,10))
+  export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed' });
 
   try {
