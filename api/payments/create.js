@@ -8,52 +8,79 @@ export default async function handler(req, res) {
   if (req.method === 'GET') return res.status(200).json({ ok: true, hasKey: !!process.env.PESAJET_API_KEY });
 
   try {
-    // FIX: Vercel already parses body in some runtimes, use it if exists
     let body = req.body;
-    
-    // If body is not parsed, parse manually
     if (!body || Object.keys(body).length === 0) {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       const raw = Buffer.concat(chunks).toString();
       try { body = JSON.parse(raw); } catch { body = {}; }
     }
-    
-    // If still string, parse again
     if (typeof body === 'string') {
       try { body = JSON.parse(body); } catch {}
     }
 
-    console.log('Received body:', JSON.stringify(body));
-
     const amount = body?.amount || body?.Amount;
-const phoneNumber = body?.phoneNumber || body?.phone || body?.mobile || body?.msisdn || body?.PhoneNumber;
+    const phoneNumber = body?.phoneNumber || body?.phone || body?.mobile || body?.msisdn || body?.PhoneNumber;
 
-if (!amount || !phoneNumber) {
-  console.log('MISSING CHECK - amount:', amount, 'phoneNumber:', phoneNumber, 'full body keys:', Object.keys(body));
-  return res.status(400).json({ error: 'Missing amount/phone', receivedBody: body, keys: Object.keys(body) });
-  } 
+    if (!amount || !phoneNumber) {
+      return res.status(400).json({ error: 'Missing amount/phone', receivedBody: body });
+    } 
 
     let phone = phoneNumber.toString().trim();
     if (phone.startsWith('0')) phone = '+256' + phone.slice(1);
     if (!phone.startsWith('+')) phone = '+256' + phone;
 
-    let provider = phone.includes('75') || phone.includes('70') ? 'airtel' : 'mtn';
+    let provider = body?.provider || (phone.includes('75') || phone.includes('70') ? 'airtel' : 'mtn');
     const apiKey = process.env.PESAJET_API_KEY;
+    const reference = body?.reference || 'LEGEND-'+Date.now();
 
-    console.log('Calling PesaJet with:', { amount, phone, provider, hasKey: !!apiKey });
+    // === NEW: SAVE PENDING TO SUPABASE FOR AUTOMATIC FLOW ===
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(
+        process.env.VITE_SUPABASE_URL,
+        process.env.VITE_SUPABASE_ANON_KEY
+      );
+      await supabase.from('recharges').insert({
+        reference: reference,
+        phone: phone,
+        amount: Number(amount),
+        provider: provider,
+        status: 'pending',
+        created_at: new Date().toISOString()
+      });
+      console.log('Saved pending:', reference);
+    } catch (dbErr) {
+      console.log('Supabase save failed (non-critical):', dbErr.message);
+    }
+
+    console.log('Calling PesaJet with:', { amount, phone, provider, reference });
 
     const r = await fetch('https://payments.pesajet.com/api/v1/payments', {
       method: 'POST',
       headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: Number(amount), phoneNumber: phone, provider, reference: 'LEGEND-'+Date.now(), currency: 'UGX' })
+      body: JSON.stringify({ 
+        amount: Number(amount), 
+        phoneNumber: phone, 
+        provider, 
+        reference: reference, 
+        currency: 'UGX' 
+      })
     });
 
     const text = await r.text();
     console.log('PesaJet response:', r.status, text);
 
     let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
-    return res.status(r.status).json({ pesajet_status: r.status, pesajet_data: data, phone_sent: phone });
+
+    // Return reference for frontend polling
+    return res.status(r.status).json({ 
+      pesajet_status: r.status, 
+      pesajet_data: data, 
+      phone_sent: phone,
+      reference: reference,  // <-- IMPORTANT FOR AUTOMATIC
+      success: r.ok
+    });
 
   } catch (e) {
     console.error('Crash:', e);
