@@ -26,13 +26,13 @@ export default async function handler(req, res) {
 
     console.log('Received body:', JSON.stringify(body));
 
-    const amount = body?.amount;
-    const phoneNumber = body?.phoneNumber;
+    const amount = body?.amount || body?.Amount;
+const phoneNumber = body?.phoneNumber || body?.phone || body?.mobile || body?.msisdn || body?.PhoneNumber;
 
-    if (!amount || !phoneNumber) {
-      console.log('Missing fields, body was:', body);
-      return res.status(400).json({ error: 'Missing amount/phone', receivedBody: body });
-    }
+if (!amount || !phoneNumber) {
+  console.log('MISSING CHECK - amount:', amount, 'phoneNumber:', phoneNumber, 'full body keys:', Object.keys(body));
+  return res.status(400).json({ error: 'Missing amount/phone', receivedBody: body, keys: Object.keys(body) });
+  } 
 
     let phone = phoneNumber.toString().trim();
     if (phone.startsWith('0')) phone = '+256' + phone.slice(1);
