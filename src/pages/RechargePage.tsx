@@ -84,7 +84,8 @@ export default function Recharge(){
     const res = await fetch("/api/payments/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: num, phone, userId: phone, provider: "mtn" })
+      const autoProvider = phone.startsWith('075') || phone.startsWith('070') || phone.startsWith('074') || phone.includes('75') || phone.includes('70') ? 'airtel' : 'mtn';
+body: JSON.stringify({ amount: num, phone, userId: phone, provider: autoProvider })
     })
     const text = await res.text()
     let data
