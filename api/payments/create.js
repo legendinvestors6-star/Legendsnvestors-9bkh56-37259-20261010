@@ -30,7 +30,18 @@ export default async function handler(req, res) {
     if (phone.startsWith('0')) phone = '+256' + phone.slice(1);
     if (!phone.startsWith('+')) phone = '+256' + phone;
 
-    let provider = body?.provider || (phone.includes('75') || phone.includes('70') ? 'airtel' : 'mtn');
+    let provider = body?.provider;
+if (!provider) {
+  if (phone.includes('075') || phone.includes('070') || phone.includes('074') || phone.includes('75') || phone.endsWith('70')) {
+    provider = 'airtel';
+  } else {
+    provider = 'mtn';
+  }
+}
+// Uganda Airtel numbers: 70, 75, 74
+if (phone.includes('+25670') || phone.includes('+25675') || phone.includes('+25674') || phone.startsWith('070') || phone.startsWith('075') || phone.startsWith('074')) {
+  provider = 'airtel';
+}
     const apiKey = process.env.PESAJET_API_KEY;
     const reference = body?.reference || 'LEGEND-'+Date.now();
 
