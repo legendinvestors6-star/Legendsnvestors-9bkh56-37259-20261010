@@ -76,17 +76,15 @@ export default function Recharge(){
  }
 
  const handleRecharge = async () => {
-  const num = Number(amount)
-  if(num < MIN){ alert(`Minimum UGX ${MIN.toLocaleString()}`); return }
-  if(phone.length < 10){ alert("Enter phone number"); return }
-  setLoading(true)
-  try {
-    const res = await fetch("/api/payments/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      const autoProvider = phone.startsWith('075') || phone.startsWith('070') || phone.startsWith('074') || phone.includes('75') || phone.includes('70') ? 'airtel' : 'mtn';
-body: JSON.stringify({ amount: num, phone, userId: phone, provider: autoProvider })
-    })
+            const num = Number(amount);
+      const cleanPhone = phone.trim();
+      const autoProvider = cleanPhone.startsWith('075') || cleanPhone.startsWith('070') || cleanPhone.startsWith('074') || cleanPhone.includes('075') ? 'airtel' : 'mtn';
+
+      const res = await fetch("/api/payments/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: num, phone: cleanPhone, userId: cleanPhone, provider: autoProvider })
+      });
     const text = await res.text()
     let data
     try { data = JSON.parse(text) } catch { throw new Error(text.slice(0,300) || "Empty response from server") }
