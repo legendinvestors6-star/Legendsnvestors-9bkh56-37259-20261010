@@ -1,63 +1,92 @@
-export const config = { runtime: 'nodejs' };
-
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method === 'GET') return res.status(200).json({ ok: true, hasKey: !!process.env.PESAJET_API_KEY });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   try {
-    let body = req.body;
-    if (!body || typeof body === 'object' && Object.keys(body).length === 0) {
-      const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
-      const raw = Buffer.concat(chunks).toString();
-      try { body = JSON.parse(raw); } catch { body = {}; }
-    }
-    if (typeof body === 'string') {
-      try { body = JSON.parse(body); } catch {}
+    const { amount, phone, provider, userId } = req.body;
+
+    if (!amount || !phone) {
+      return res.status(400).json({ error: 'Missing amount or phone' });
     }
 
-    const amount = body?.amount;
-    let phone = (body?.phone || body?.phoneNumber || '').toString().trim();
-    if (phone.startsWith('0')) phone = '+256' + phone.slice(1);
-    if (!phone.startsWith('+')) phone = '+' + phone.replace(/\+/g,'');
+    let raw = phone.replace('+256', '').replace(/\s/g, '');
+    let clean = raw.startsWith('0') ? raw.slice(1) : raw;
+    let finalProvider = provider || 'mtn';
 
-    // --- FORCED PROVIDER FIX ---
-    let clean = phone.replace('+256','').replace('+','');
-    if (clean.startsWith('0')) clean = clean.slice(1);
-    let provider = 'mtn';
-    if (clean.startsWith('70') || clean.startsWith('75') || clean.startsWith('74')) {
-      provider = 'airtel';
+    if (clean.startsWith('75') || clean.startsWith('70') || clean.startsWith('74') || clean.startsWith('20')) {
+      finalProvider = 'airtel';
     }
 
-    const apiKey = (process.env.PESAJET_API_KEY || '').trim();
-    const reference = 'LEGEND-' + Date.now();
+    const finalPhone = '+256' + clean;
+    const reference = 'LEGEND-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
 
-    if (!apiKey) {
-      return res.status(200).json({ success: false, message: 'Missing PESAJET_API_KEY in Vercel', reference });
+    console.log(`PAYMENT: ${finalPhone} | ${finalProvider} | ${amount} | ${reference}`);
+
+    if (!process.env.PESAJET_API_KEY) {
+      return res.status(500).json({ error: 'Missing PESAJET_API_KEY in Vercel' });
     }
 
-    try {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
-      await supabase.from('recharges').insert({ reference, phone, amount: Number(amount), provider, status: 'pending' });
-    } catch (e) {}
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+      return res.status(500).json({ error: 'Missing SUPABASE env' });
+    }
 
-    const r = await fetch('https://payments.pesajet.com/api/v1/payments', {
+    const pesajetRes = await fetch('https://payments.pesajet.com/api/v1/payments', {
       method: 'POST',
-      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: Number(amount), phoneNumber: phone, provider, reference, currency: 'UGX' })
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': process.env.PESAJET_API_KEY
+      },
+      body: JSON.stringify({
+        amount: Number(amount),
+        phoneNumber: finalPhone,
+        provider: finalProvider,
+        reference: reference,
+        currency: 'UGX'
+      })
     });
 
-    const text = await r.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = { raw: text }; }
+    const pesajetText = await pesajetRes.text();
+    let pesajetData;
+    try { pesajetData = JSON.parse(pesajetText); } catch { pesajetData = { raw: pesajetText }; }
 
-    return res.status(200).json({ pesajet_status: r.status, pesajet_data: data, reference, success: r.ok, provider_sent: provider, phone_sent: phone, message: data.message || data.error || text });
+    console.log('PESAJET RESP:', pesajetRes.status, pesajetData);
+
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+    const { error: dbError } = await supabase.from('recharges').insert({
+      reference: reference,
+      user_id: userId || finalPhone,
+      phone: finalPhone,
+      amount: Number(amount),
+      provider: finalProvider,
+      status: pesajetRes.ok ? 'pending' : 'failed',
+      pesajet_response: pesajetData
+    });
+
+    if (dbError) console.log('DB ERROR:', dbError);
+
+    if (!pesajetRes.ok) {
+      return res.status(400).json({
+        error: 'PesaJet failed',
+        pesajet_status: pesajetRes.status,
+        pesajet_data: pesajetData,
+        provider_sent: finalProvider,
+        phone_sent: finalPhone
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      reference: reference,
+      provider: finalProvider,
+      phone: finalPhone,
+      pesajet: pesajetData
+    });
 
   } catch (e) {
-    return res.status(200).json({ success: false, error: e.message });
+    console.error('CREATE ERROR:', e);
+    return res.status(500).json({ error: e.message });
   }
-}
+      }
