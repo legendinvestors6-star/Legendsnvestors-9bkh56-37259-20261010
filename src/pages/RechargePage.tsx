@@ -89,7 +89,10 @@ export default function Recharge(){
     const text = await res.text()
     let data
     try { data = JSON.parse(text) } catch { throw new Error(text.slice(0,300) || "Empty response from server") }
-    if(!res.ok) throw new Error(data.message || data.error || "Payment failed")
+    if(!res.ok) {
+  const realError = data?.pesajet_data?.message || data?.pesajet_data?.error || data?.raw || JSON.stringify(data).slice(0,400)
+  throw new Error(realError || "Payment failed")
+    }
 
     // START AUTOMATIC POLLING - pending -> approved
     const reference = data.reference
