@@ -62,8 +62,7 @@ function initAdmin() {
     };
     saveUsers([...users, admin]);
   } else {
-    // Migrate old credentials to new ones
-    if (users[adminIdx].phone !== ADMIN_PHONE || users[adminIdx].password !== ADMIN_PASSWORD) {
+    if (users[adminIdx].phone!== ADMIN_PHONE || users[adminIdx].password!== ADMIN_PASSWORD) {
       users[adminIdx].phone = ADMIN_PHONE;
       users[adminIdx].password = ADMIN_PASSWORD;
       saveUsers(users);
@@ -74,7 +73,7 @@ function initAdmin() {
 export function getUsers(): User[] {
   try {
     const data = localStorage.getItem(KEYS.USERS);
-    return data ? JSON.parse(data) : [];
+    return data? JSON.parse(data) : [];
   } catch { return []; }
 }
 
@@ -82,8 +81,29 @@ export function saveUsers(users: User[]): void {
   localStorage.setItem(KEYS.USERS, JSON.stringify(users));
 }
 
+// ===== FIXED: THIS NOW READS SUPABASE legend_user FIRST =====
 export function getCurrentUser(): User | null {
   try {
+    // 1. Try Supabase user (legend_user) - YOUR LIVE SYSTEM
+    const supaRaw = localStorage.getItem('legend_user');
+    if (supaRaw) {
+      const u = JSON.parse(supaRaw);
+      return {
+        id: u.id,
+        phone: u.phone,
+        password: u.password || '',
+        balance: u.balance || 0,
+        cumulativeIncome: u.balance || 0,
+        level: u.level || 1,
+        referralCode: u.referral_code,
+        referredBy: undefined,
+        checkInDays: 0,
+        createdAt: u.created_at || new Date().toISOString(),
+        isAdmin: u.phone === ADMIN_PHONE,
+        bankCard: u.bankCard || null,
+      } as User;
+    }
+    // 2. Fallback to old localStorage system
     const id = localStorage.getItem(KEYS.CURRENT_USER);
     if (!id) return null;
     const users = getUsers();
@@ -91,19 +111,36 @@ export function getCurrentUser(): User | null {
   } catch { return null; }
 }
 
-export function setCurrentUser(userId: string | null): void {
-  if (userId) {
-    localStorage.setItem(KEYS.CURRENT_USER, userId);
-  } else {
+export function setCurrentUser(user: any): void {
+  if (!user) {
+    localStorage.removeItem('legend_user');
     localStorage.removeItem(KEYS.CURRENT_USER);
+  } else if (typeof user === 'string') {
+    // Old style: just ID
+    localStorage.setItem(KEYS.CURRENT_USER, user);
+  } else {
+    // New style: full object -> save as legend_user
+    localStorage.setItem('legend_user', JSON.stringify(user));
+    localStorage.setItem(KEYS.CURRENT_USER, user.id);
   }
 }
 
 export function updateUser(userId: string, updates: Partial<User>): User | null {
+  // Update legend_user if it's current user
+  try {
+    const raw = localStorage.getItem('legend_user');
+    if (raw) {
+      const u = JSON.parse(raw);
+      if (u.id === userId) {
+        const updated = {...u,...updates, balance: (updates as any).balance?? u.balance };
+        localStorage.setItem('legend_user', JSON.stringify(updated));
+      }
+    }
+  } catch {}
   const users = getUsers();
   const idx = users.findIndex(u => u.id === userId);
   if (idx === -1) return null;
-  users[idx] = { ...users[idx], ...updates };
+  users[idx] = {...users[idx],...updates };
   saveUsers(users);
   return users[idx];
 }
@@ -154,27 +191,27 @@ export function loginUser(phone: string, password: string): { success: boolean; 
 export function getTransactions(userId?: string): Transaction[] {
   try {
     const data = localStorage.getItem(KEYS.TRANSACTIONS);
-    const all: Transaction[] = data ? JSON.parse(data) : [];
-    return userId ? all.filter(t => t.userId === userId) : all;
+    const all: Transaction[] = data? JSON.parse(data) : [];
+    return userId? all.filter(t => t.userId === userId) : all;
   } catch { return []; }
 }
 
 export function addTransaction(tx: Omit<Transaction, 'id' | 'createdAt'>): Transaction {
   const transactions = getTransactions();
   const newTx: Transaction = {
-    ...tx,
+   ...tx,
     id: generateId(),
     createdAt: new Date().toISOString(),
   };
-  localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify([newTx, ...transactions]));
+  localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify([newTx,...transactions]));
   return newTx;
 }
 
 export function getRechargeOrders(userId?: string): RechargeOrder[] {
   try {
     const data = localStorage.getItem(KEYS.RECHARGE_ORDERS);
-    const all: RechargeOrder[] = data ? JSON.parse(data) : [];
-    return userId ? all.filter(o => o.userId === userId) : all;
+    const all: RechargeOrder[] = data? JSON.parse(data) : [];
+    return userId? all.filter(o => o.userId === userId) : all;
   } catch { return []; }
 }
 
@@ -191,7 +228,7 @@ export function createRechargeOrder(userId: string, amount: number, paymentMetho
     mtnAccount: MTN_ACCOUNT,
     mtnName: MTN_NAME,
   };
-  localStorage.setItem(KEYS.RECHARGE_ORDERS, JSON.stringify([order, ...orders]));
+  localStorage.setItem(KEYS.RECHARGE_ORDERS, JSON.stringify([order,...orders]));
   return order;
 }
 
@@ -200,12 +237,12 @@ export function approveRechargeOrder(orderId: string): boolean {
   const idx = orders.findIndex(o => o.id === orderId);
   if (idx === -1) return false;
   const order = orders[idx];
-  if (order.status !== 'pending') return false;
+  if (order.status!== 'pending') return false;
   orders[idx].status = 'completed';
   localStorage.setItem(KEYS.RECHARGE_ORDERS, JSON.stringify(orders));
   const users = getUsers();
   const uIdx = users.findIndex(u => u.id === order.userId);
-  if (uIdx !== -1) {
+  if (uIdx!== -1) {
     users[uIdx].balance += order.amount;
     saveUsers(users);
   }
@@ -220,7 +257,7 @@ export function approveRechargeOrder(orderId: string): boolean {
   if (referredUser?.referredBy) {
     const l1Commission = Math.floor(order.amount * 0.27);
     const rIdx = users.findIndex(u => u.id === referredUser.referredBy);
-    if (rIdx !== -1) {
+    if (rIdx!== -1) {
       users[rIdx].balance += l1Commission;
       users[rIdx].cumulativeIncome += l1Commission;
       saveUsers(users);
@@ -248,15 +285,15 @@ export function rejectRechargeOrder(orderId: string): boolean {
 export function getWithdrawOrders(userId?: string): WithdrawOrder[] {
   try {
     const data = localStorage.getItem(KEYS.WITHDRAW_ORDERS);
-    const all: WithdrawOrder[] = data ? JSON.parse(data) : [];
-    return userId ? all.filter(o => o.userId === userId) : all;
+    const all: WithdrawOrder[] = data? JSON.parse(data) : [];
+    return userId? all.filter(o => o.userId === userId) : all;
   } catch { return []; }
 }
 
 export function createWithdrawOrder(userId: string, amount: number): { success: boolean; message: string; order?: WithdrawOrder } {
-  const user = getUsers().find(u => u.id === userId);
+  const user = getUsers().find(u => u.id === userId) || getCurrentUser();
   if (!user) return { success: false, message: 'User not found' };
-  if (!user.bankCard) return { success: false, message: 'Please bind your bank card first' };
+  if (!(user as any).bankCard) return { success: false, message: 'Please bind your bank card first' };
   const activeProducts = getUserProducts(userId).filter(p => p.status === 'active');
   if (activeProducts.length === 0) return { success: false, message: 'You must have at least one active product to withdraw' };
   if (amount < 9000) return { success: false, message: 'Minimum withdrawal is UGX 9,000' };
@@ -270,18 +307,18 @@ export function createWithdrawOrder(userId: string, amount: number): { success: 
     amount,
     receivedAmount: received,
     fee,
-    bankCard: user.bankCard,
+    bankCard: (user as any).bankCard,
     status: 'pending',
     createdAt: new Date().toISOString(),
   };
-  localStorage.setItem(KEYS.WITHDRAW_ORDERS, JSON.stringify([order, ...orders]));
+  localStorage.setItem(KEYS.WITHDRAW_ORDERS, JSON.stringify([order,...orders]));
   updateUser(userId, { balance: user.balance - amount });
   addTransaction({
     userId,
     type: 'withdraw',
     amount: -amount,
     status: 'pending',
-    description: `Withdrawal to ${user.bankCard.bank} - ${user.bankCard.accountNumber}`,
+    description: `Withdrawal to ${(user as any).bankCard.bank} - ${(user as any).bankCard.accountNumber}`,
   });
   return { success: true, message: 'Withdrawal submitted', order };
 }
@@ -296,27 +333,24 @@ export function approveWithdrawOrder(orderId: string): boolean {
 }
 
 export function creditDailyIncome(userId: string): { credited: number; nextPayoutMs: number } {
-  const user = getUsers().find(u => u.id === userId);
+  const user = getUsers().find(u => u.id === userId) || getCurrentUser();
   if (!user) return { credited: 0, nextPayoutMs: 0 };
   const products = getUserProducts(userId).filter(p => p.status === 'active');
   if (products.length === 0) return { credited: 0, nextPayoutMs: 0 };
-
   const INCOME_KEY = `legend_last_income_${userId}`;
   const lastCreditStr = localStorage.getItem(INCOME_KEY);
-  const lastCredit = lastCreditStr ? parseInt(lastCreditStr) : 0;
+  const lastCredit = lastCreditStr? parseInt(lastCreditStr) : 0;
   const now = Date.now();
   const INTERVAL_MS = 24 * 60 * 60 * 1000;
   const nextPayoutMs = lastCredit + INTERVAL_MS - now;
-
   if (nextPayoutMs > 0) return { credited: 0, nextPayoutMs };
-
   let totalIncome = 0;
   for (const up of products) {
     const productDef = PRODUCTS.find(p => p.id === up.productId);
     if (productDef) totalIncome += productDef.dailyIncome;
   }
   if (totalIncome > 0) {
-    const freshUser = getUsers().find(u => u.id === userId);
+    const freshUser = getUsers().find(u => u.id === userId) || getCurrentUser();
     if (freshUser) {
       updateUser(userId, { balance: freshUser.balance + totalIncome, cumulativeIncome: freshUser.cumulativeIncome + totalIncome });
       addTransaction({ userId, type: 'income', amount: totalIncome, status: 'completed', description: `Daily income from ${products.length} active product(s)` });
@@ -329,7 +363,7 @@ export function creditDailyIncome(userId: string): { credited: number; nextPayou
 export function getNextPayoutMs(userId: string): number {
   const INCOME_KEY = `legend_last_income_${userId}`;
   const lastCreditStr = localStorage.getItem(INCOME_KEY);
-  const lastCredit = lastCreditStr ? parseInt(lastCreditStr) : 0;
+  const lastCredit = lastCreditStr? parseInt(lastCreditStr) : 0;
   const INTERVAL_MS = 24 * 60 * 60 * 1000;
   const ms = lastCredit + INTERVAL_MS - Date.now();
   return Math.max(0, ms);
@@ -342,7 +376,7 @@ export function rejectWithdrawOrder(orderId: string): boolean {
   const order = orders[idx];
   orders[idx].status = 'rejected';
   localStorage.setItem(KEYS.WITHDRAW_ORDERS, JSON.stringify(orders));
-  const user = getUsers().find(u => u.id === order.userId);
+  const user = getUsers().find(u => u.id === order.userId) || getCurrentUser();
   if (user) updateUser(order.userId, { balance: user.balance + order.amount });
   return true;
 }
@@ -350,13 +384,13 @@ export function rejectWithdrawOrder(orderId: string): boolean {
 export function getUserProducts(userId?: string): UserProduct[] {
   try {
     const data = localStorage.getItem(KEYS.USER_PRODUCTS);
-    const all: UserProduct[] = data ? JSON.parse(data) : [];
-    return userId ? all.filter(p => p.userId === userId) : all;
+    const all: UserProduct[] = data? JSON.parse(data) : [];
+    return userId? all.filter(p => p.userId === userId) : all;
   } catch { return []; }
 }
 
 export function purchaseProduct(userId: string, productId: number, price: number, dailyIncome: number, term: number): { success: boolean; message: string } {
-  const user = getUsers().find(u => u.id === userId);
+  const user = getUsers().find(u => u.id === userId) || getCurrentUser();
   if (!user) return { success: false, message: 'User not found' };
   if (user.balance < price) return { success: false, message: 'Insufficient balance. Please recharge first.' };
   const products = getUserProducts();
@@ -385,17 +419,17 @@ export function purchaseProduct(userId: string, productId: number, price: number
 }
 
 export function performCheckIn(userId: string): { success: boolean; message: string; reward?: number } {
-  const user = getUsers().find(u => u.id === userId);
+  const user = getUsers().find(u => u.id === userId) || getCurrentUser();
   if (!user) return { success: false, message: 'User not found' };
   const today = new Date().toDateString();
-  if (user.lastCheckIn === today) return { success: false, message: 'Already checked in today' };
+  if ((user as any).lastCheckIn === today) return { success: false, message: 'Already checked in today' };
   const reward = 300;
   updateUser(userId, {
     balance: user.balance + reward,
     cumulativeIncome: user.cumulativeIncome + reward,
     checkInDays: user.checkInDays + 1,
     lastCheckIn: today,
-  });
+  } as any);
   addTransaction({
     userId,
     type: 'checkin',
@@ -426,44 +460,42 @@ export function getTeamCommissions(userId: string): { level1: number; level2: nu
 export function getGiftCodes(): GiftCode[] {
   try {
     const data = localStorage.getItem(KEYS.GIFT_CODES);
-    return data ? JSON.parse(data) : [];
+    return data? JSON.parse(data) : [];
   } catch { return []; }
 }
 
 export function createGiftCode(amount: number, note?: string, customCode?: string): GiftCode {
   const codes = getGiftCodes();
-  // Auto-expire 30 minutes after creation
   const expiry = new Date(Date.now() + 30 * 60 * 1000).toISOString();
   const code: GiftCode = {
     id: generateId(),
-    code: customCode ? customCode.toUpperCase() : Math.random().toString(36).substr(2, 8).toUpperCase(),
+    code: customCode? customCode.toUpperCase() : Math.random().toString(36).substr(2, 8).toUpperCase(),
     amount,
     note,
     expiresAt: expiry,
     createdAt: new Date().toISOString(),
   };
-  localStorage.setItem(KEYS.GIFT_CODES, JSON.stringify([code, ...codes]));
+  localStorage.setItem(KEYS.GIFT_CODES, JSON.stringify([code,...codes]));
   return code;
 }
 
 export function deleteGiftCode(codeId: string): void {
-  const codes = getGiftCodes().filter(c => c.id !== codeId);
+  const codes = getGiftCodes().filter(c => c.id!== codeId);
   localStorage.setItem(KEYS.GIFT_CODES, JSON.stringify(codes));
 }
 
 export function getPasswordResets(): PasswordResetRequest[] {
   try {
     const data = localStorage.getItem(KEYS.PASSWORD_RESETS);
-    return data ? JSON.parse(data) : [];
+    return data? JSON.parse(data) : [];
   } catch { return []; }
 }
 
 export function createPasswordReset(phone: string, newPassword: string): { success: boolean; message: string } {
   const users = getUsers();
-  const user = users.find(u => u.phone === phone && !u.isAdmin);
+  const user = users.find(u => u.phone === phone &&!u.isAdmin);
   if (!user) return { success: false, message: 'No account found with this phone number' };
   const resets = getPasswordResets();
-  // Check for existing pending request from same phone
   const existing = resets.find(r => r.phone === phone && r.status === 'pending');
   if (existing) return { success: false, message: 'A reset request is already pending for this account' };
   const req: PasswordResetRequest = {
@@ -473,13 +505,12 @@ export function createPasswordReset(phone: string, newPassword: string): { succe
     status: 'pending',
     createdAt: new Date().toISOString(),
   };
-  localStorage.setItem(KEYS.PASSWORD_RESETS, JSON.stringify([req, ...resets]));
+  localStorage.setItem(KEYS.PASSWORD_RESETS, JSON.stringify([req,...resets]));
   return { success: true, message: 'Reset request submitted. Admin will verify and approve shortly.' };
 }
 
 export function getPasswordResetStatus(phone: string): PasswordResetRequest | null {
   const resets = getPasswordResets();
-  // Return the latest request for this phone
   return resets.find(r => r.phone === phone) || null;
 }
 
@@ -488,15 +519,14 @@ export function approvePasswordReset(resetId: string): boolean {
   const idx = resets.findIndex(r => r.id === resetId);
   if (idx === -1) return false;
   const req = resets[idx];
-  if (req.status !== 'pending') return false;
-  // Apply the new password
+  if (req.status!== 'pending') return false;
   const users = getUsers();
   const uIdx = users.findIndex(u => u.phone === req.phone);
-  if (uIdx !== -1) {
+  if (uIdx!== -1) {
     users[uIdx].password = req.newPassword;
     saveUsers(users);
   }
-  resets[idx] = { ...req, status: 'approved', resolvedAt: new Date().toISOString() };
+  resets[idx] = {...req, status: 'approved', resolvedAt: new Date().toISOString() };
   localStorage.setItem(KEYS.PASSWORD_RESETS, JSON.stringify(resets));
   return true;
 }
@@ -505,21 +535,21 @@ export function rejectPasswordReset(resetId: string, note?: string): boolean {
   const resets = getPasswordResets();
   const idx = resets.findIndex(r => r.id === resetId);
   if (idx === -1) return false;
-  resets[idx] = { ...resets[idx], status: 'rejected', resolvedAt: new Date().toISOString(), note };
+  resets[idx] = {...resets[idx], status: 'rejected', resolvedAt: new Date().toISOString(), note };
   localStorage.setItem(KEYS.PASSWORD_RESETS, JSON.stringify(resets));
   return true;
 }
 
 export function redeemGiftCode(userId: string, codeStr: string): { success: boolean; message: string; amount?: number } {
-  const user = getUsers().find(u => u.id === userId);
+  const user = getUsers().find(u => u.id === userId) || getCurrentUser();
   if (!user) return { success: false, message: 'User not found' };
   const codes = getGiftCodes();
-  const idx = codes.findIndex(c => c.code === codeStr.toUpperCase() && !c.usedBy);
+  const idx = codes.findIndex(c => c.code === codeStr.toUpperCase() &&!c.usedBy);
   if (idx === -1) return { success: false, message: 'Invalid or already used gift code' };
   const expiry = codes[idx].expiresAt;
   if (expiry && new Date(expiry) < new Date()) return { success: false, message: 'This gift code has expired' };
   const code = codes[idx];
-  codes[idx] = { ...code, usedBy: userId, usedAt: new Date().toISOString() };
+  codes[idx] = {...code, usedBy: userId, usedAt: new Date().toISOString() };
   localStorage.setItem(KEYS.GIFT_CODES, JSON.stringify(codes));
   updateUser(userId, { balance: user.balance + code.amount });
   addTransaction({ userId, type: 'bonus', amount: code.amount, status: 'completed', description: `Gift code redeemed: ${code.code}` });
@@ -528,4 +558,4 @@ export function redeemGiftCode(userId: string, codeStr: string): { success: bool
 
 export function formatUGX(amount: number): string {
   return `UGX ${amount.toLocaleString()}`;
-}
+    }
