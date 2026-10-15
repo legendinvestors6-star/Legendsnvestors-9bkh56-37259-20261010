@@ -558,4 +558,4 @@ export function redeemGiftCode(userId: string, codeStr: string): { success: bool
 
 export function formatUGX(amount: number): string {
   return `UGX ${amount.toLocaleString()}`;
-    }
+        }
