@@ -118,4 +118,77 @@ export default function HomePage() {
 
       {activeProducts.length > 0 && (
         <div className="mx-4 mt-3 rounded-2xl p-3 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #1a1100, #2d1f00)', border: '1px solid rgba(201,168,76,0.35)' }}>
-          <div
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center gold-gradient"><Clock size={15} className="text-black" /></div>
+            <div><p className="text-[#c9a84c] text-xs font-semibold">Next Income Payout</p><p className="text-gray-500 text-[10px]">{activeProducts.length} product(s) · <span className="text-green-400 font-semibold">+{formatUGX(dailyTotal)}/day</span></p></div>
+          </div>
+          <div className="text-right">
+            {nextPayoutMs <= 0? (<div className="px-3 py-1.5 rounded-xl text-xs font-bold text-black gold-gradient flex items-center gap-1"><TrendingUp size={12} /> Crediting...</div>) : (
+              <div className="px-3 py-1.5 rounded-xl" style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(201,168,76,0.3)' }}><p className="text-[#c9a84c] font-black text-base tabular-nums">{formatCountdown(nextPayoutMs)}</p></div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="mx-4 mt-3 rounded-2xl p-4" style={{ background: '#151515', border: '1px solid #2a2a2a' }}>
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          {[
+            { label: 'My Balance', value: formatUGX(currentUser.balance), img: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=120&h=80&fit=crop', path: '/records' },
+            { label: 'Cumulative Income', value: formatUGX(currentUser.cumulativeIncome), img: 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=120&h=80&fit=crop', path: '/records' },
+            { label: 'Customer Service >', value: '', img: 'https://images.unsplash.com/photo-1544636331-e26879cd4d9b?w=120&h=80&fit=crop', path: '/customer-service', isService: true },
+          ].map((item, i) => (
+            <button key={i} onClick={() => navigate(item.path)} className="rounded-xl overflow-hidden text-left" style={{ border: '1px solid #2a2a2a' }}>
+              <img src={item.img} alt="" className="w-full h-14 object-cover" />
+              {item.isService? (
+                <div className="p-2 text-center" style={{ background: '#1a1a1a' }}><p className="text-[#c9a84c] text-[10px] font-medium">{item.label}</p></div>
+              ) : (
+                <div className="p-2 text-center" style={{ background: '#1a1a1a' }}><p className="text-white font-bold text-[10px]">{item.value}</p><p className="text-[#c9a84c] text-[9px] mt-0.5">{item.label}</p></div>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-4 gap-2">
+          {quickActions.map(action => {
+            const Icon = action.icon;
+            return (
+              <button key={action.label} onClick={() => navigate(action.path)} className="flex flex-col items-center gap-1.5 p-2 rounded-xl" style={{ background: '#1e1e1e' }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center gold-gradient"><Icon size={17} className="text-black" /></div>
+                <span className="text-[9px] text-gray-400 font-medium">{action.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="px-4 mt-4">
+        <h3 className="font-bold text-white text-sm mb-3 flex items-center gap-2"><span className="w-1 h-4 gold-gradient rounded-full inline-block" />BMW Games for All</h3>
+        <div className="grid grid-cols-4 gap-2">
+          {GAME_IMAGES.map((img, i) => (<div key={i} className="rounded-xl overflow-hidden aspect-square" style={{ border: '1px solid #2a2a2a' }}><img src={img} alt={`BMW game ${i + 1}`} className="w-full h-full object-cover" /></div>))}
+        </div>
+      </div>
+
+      <div className="px-4 mt-4">
+        <div className="rounded-2xl p-4" style={{ background: '#151515', border: '1px solid #2a2a2a' }}>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-white text-sm flex items-center gap-2"><span className="w-1 h-4 gold-gradient rounded-full inline-block" />Product Center</h3>
+            <button onClick={() => navigate('/product')} className="flex items-center text-[#c9a84c] text-xs">View All <ChevronRight size={12} /></button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="rounded-xl p-3 text-center" style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)' }}><p className="text-2xl font-black text-[#c9a84c]">{activeProducts.length}</p><p className="text-gray-500 text-xs">My Products</p></div>
+            <div className="rounded-xl p-3 text-center" style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)' }}><p className="text-base font-black text-[#c9a84c]">{formatUGX(currentUser.balance)}</p><p className="text-gray-500 text-xs">My Income</p></div>
+          </div>
+          <div className="space-y-2">
+            {PRODUCTS.slice(0, 3).map(product => (
+              <div key={product.id} className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#1e1e1e', border: '1px solid #2a2a2a' }}>
+                <div><div className="flex items-center gap-1.5 mb-0.5"><span className="text-[9px] font-bold text-black px-1.5 py-0.5 rounded gold-gradient">VIP{product.vip}</span><p className="text-white text-xs font-semibold">Legend One BMW</p></div><p className="text-[#c9a84c] font-bold text-sm">{formatUGX(product.price)}</p></div>
+                <button onClick={() => navigate('/product')} className="text-[10px] font-bold text-black px-3 py-1.5 rounded-xl gold-gradient">BUY NOW</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="h-4" />
+    </AppLayout>
+  );
+            }
