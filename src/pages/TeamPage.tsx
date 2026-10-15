@@ -150,4 +150,23 @@ export default function TeamPage() {
         <div className="mx-4 rounded-2xl p-10 text-center" style={{ background: '#151515' }}>
           <Users size={32} className="text-gray-600 mx-auto mb-2" />
           <p className="text-gray-600 text-sm">No Members yet</p>
-          <p className="text-gray-700 text-xs mt
+          <p className="text-gray-700 text-xs mt-1">Share your invite link to grow your team</p>
+        </div>
+      ) : (
+        <div className="px-4 space-y-2">
+          <h3 className="text-white font-semibold text-sm">Level 1 Members ({level1.length})</h3>
+          {level1.map(member => (
+            <div key={member.id} className="rounded-xl p-3 flex items-center justify-between" style={{ background: '#151515', border: '1px solid #2a2a2a' }}>
+              <div>
+                <p className="text-white text-sm font-medium">{member.phone}</p>
+                <p className="text-gray-500 text-xs">{member.created_at? new Date(member.created_at).toLocaleDateString() : ''} - {formatUGX(member.balance||0)}</p>
+              </div>
+              <span className="text-[#c9a84c] text-xs font-semibold">L1</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="h-4" />
+    </AppLayout>
+  );
+}
