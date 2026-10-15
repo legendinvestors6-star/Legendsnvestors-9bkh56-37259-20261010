@@ -2,37 +2,92 @@ import { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, Phone, Lock, Gift } from 'lucide-react';
 import { toast } from 'sonner';
-import { registerUser } from '@/lib/storage';
 import { REGISTRATION_BONUS } from '@/constants/products';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const refCode = params.get('ref') || '';
+  const initialRef = params.get('ref') || localStorage.getItem('referred_by') || '';
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [refCodeInput, setRefCodeInput] = useState(initialRef);
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleRegister = () => {
-    if (!phone.trim() || !password.trim() || !confirm.trim()) { toast.error('Please fill in all fields'); return; }
-    if (password !== confirm) { toast.error('Passwords do not match'); return; }
+  const handleRegister = async () => {
+    if (!phone.trim() ||!password.trim() ||!confirm.trim()) { toast.error('Please fill in all fields'); return; }
+    if (password!== confirm) { toast.error('Passwords do not match'); return; }
     if (password.length < 6) { toast.error('Password must be at least 6 characters'); return; }
+
     setLoading(true);
-    if (refCode) {
-  localStorage.setItem('referred_by', refCode);
-    }
-    setTimeout(() => {
-      const result = registerUser(phone.trim(), password, refCode.trim() || undefined);
-      if (result.success && result.user) {
-        toast.success(`Welcome! You received UGX ${REGISTRATION_BONUS.toLocaleString()} bonus!`);
-        navigate('/home');
-      } else {
-        toast.error(result.message);
+    try {
+      const cleanPhone = phone.trim();
+
+      // 1. Check if phone already exists
+      const { data: existing } = await supabase.from('users').select('id').eq('phone', cleanPhone).single();
+      if (existing) {
+        toast.error('Phone number already registered');
+        setLoading(false);
+        return;
       }
+
+      // 2. Find who referred this user
+      let referredById = null;
+      const refCodeToUse = (refCodeInput || '').trim().toUpperCase();
+      if (refCodeToUse) {
+        const { data: referrer } = await supabase.from('users').select('id').eq('referral_code', refCodeToUse).single();
+        if (referrer) {
+          referredById = referrer.id;
+        } else {
+          toast.error('Invalid referral code');
+          // don't block, just continue without referral
+        }
+      }
+
+      // 3. Generate own referral code
+      const myReferralCode = 'LEGEND' + Math.floor(100000 + Math.random() * 900000);
+
+      // 4. Create user in public.users with PHONE + BALANCE + REFERRAL
+      const { data: newUser, error } = await supabase.from('users').insert({
+        phone: cleanPhone,
+        password: password, // NOTE: hash this in production!
+        balance: REGISTRATION_BONUS,
+        referral_code: myReferralCode,
+        referred_by: referredById,
+        level: 1,
+        is_admin: false
+      }).select().single();
+
+      if (error) throw error;
+
+      // 5. Add transaction for bonus
+      await supabase.from('transactions').insert({
+        user_id: newUser.id,
+        type: 'bonus',
+        amount: REGISTRATION_BONUS,
+        description: 'Registration Bonus'
+      });
+
+      // 6. Save session locally
+      localStorage.setItem('legend_user', JSON.stringify(newUser));
+      localStorage.setItem('legend_current_user_id', newUser.id);
+
+      toast.success(`Welcome! You received UGX ${REGISTRATION_BONUS.toLocaleString()} bonus!`);
+      navigate('/home');
+
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Registration failed');
+    } finally {
       setLoading(false);
-    }, 600);
+    }
   };
 
   return (
@@ -52,7 +107,6 @@ export default function RegisterPage() {
         </div>
       </div>
 
-      {/* Bonus Banner */}
       <div className="mx-4 mb-4 rounded-2xl p-3 flex items-center gap-3" style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.3)' }}>
         <div className="w-9 h-9 gold-gradient rounded-xl flex items-center justify-center">
           <Gift size={18} className="text-black" />
@@ -66,50 +120,41 @@ export default function RegisterPage() {
       <div className="mx-4 rounded-3xl p-6" style={{ background: '#151515', border: '1px solid #2a2a2a' }}>
         <h2 className="text-xl font-bold text-white mb-5">Create Account</h2>
         <div className="space-y-4">
-          {[
-            { label: 'Phone Number', value: phone, setter: setPhone, type: 'tel', placeholder: 'e.g. 0751234567', icon: Phone },
-            { label: 'Password', value: password, setter: setPassword, type: showPw ? 'text' : 'password', placeholder: 'At least 6 characters', icon: Lock, hasToggle: true },
-            { label: 'Confirm Password', value: confirm, setter: setConfirm, type: 'password', placeholder: 'Re-enter password', icon: Lock },
-          ].map(field => {
-            const Icon = field.icon;
-            return (
-              <div key={field.label}>
-                <label className="text-xs font-medium text-gray-500 mb-1.5 block">{field.label}</label>
-                <div className="flex items-center rounded-xl px-3 py-3.5" style={{ background: '#1f1f1f', border: '1.5px solid #333' }}>
-                  <Icon size={15} className="text-gray-500 mr-2" />
-                  <input
-                    type={field.type} value={field.value}
-                    onChange={e => field.setter(e.target.value)}
-                    placeholder={field.placeholder}
-                    className="flex-1 outline-none text-sm text-white bg-transparent placeholder-gray-600"
-                  />
-                  {field.hasToggle && (
-                    <button onClick={() => setShowPw(!showPw)} className="text-gray-500 ml-1">
-                      {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Phone Number</label>
+            <div className="flex items-center rounded-xl px-3 py-3.5" style={{ background: '#1f1f1f', border: '1.5px solid #333' }}>
+              <Phone size={15} className="text-gray-500 mr-2" />
+              <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 0751234567" className="flex-1 outline-none text-sm text-white bg-transparent placeholder-gray-600" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Password</label>
+            <div className="flex items-center rounded-xl px-3 py-3.5" style={{ background: '#1f1f1f', border: '1.5px solid #333' }}>
+              <Lock size={15} className="text-gray-500 mr-2" />
+              <input type={showPw? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" className="flex-1 outline-none text-sm text-white bg-transparent placeholder-gray-600" />
+              <button onClick={() => setShowPw(!showPw)} className="text-gray-500 ml-1">{showPw? <EyeOff size={15} /> : <Eye size={15} />}</button>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Confirm Password</label>
+            <div className="flex items-center rounded-xl px-3 py-3.5" style={{ background: '#1f1f1f', border: '1.5px solid #333' }}>
+              <Lock size={15} className="text-gray-500 mr-2" />
+              <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Re-enter password" className="flex-1 outline-none text-sm text-white bg-transparent placeholder-gray-600" />
+            </div>
+          </div>
 
           <div>
             <label className="text-xs font-medium text-gray-500 mb-1.5 block">Referral Code (Optional)</label>
             <div className="flex items-center rounded-xl px-3 py-3.5" style={{ background: '#1f1f1f', border: '1.5px solid #333' }}>
               <Gift size={15} className="text-gray-500 mr-2" />
-              <input
-                type="text" value={refCode} onChange={e => setRefCode(e.target.value)}
-                placeholder="Enter referral code"
-                className="flex-1 outline-none text-sm text-white bg-transparent placeholder-gray-600 uppercase"
-              />
+              <input type="text" value={refCodeInput} onChange={e => setRefCodeInput(e.target.value.toUpperCase())} placeholder="Enter referral code" className="flex-1 outline-none text-sm text-white bg-transparent placeholder-gray-600 uppercase" />
             </div>
           </div>
 
-          <button
-            onClick={handleRegister} disabled={loading}
-            className="w-full gold-gradient py-4 rounded-xl font-bold text-black text-base disabled:opacity-60"
-          >
-            {loading ? 'Creating account...' : 'Register & Claim Bonus'}
+          <button onClick={handleRegister} disabled={loading} className="w-full gold-gradient py-4 rounded-xl font-bold text-black text-base disabled:opacity-60">
+            {loading? 'Creating account...' : 'Register & Claim Bonus'}
           </button>
 
           <div className="text-center pt-1">
@@ -118,7 +163,6 @@ export default function RegisterPage() {
           </div>
         </div>
       </div>
-      <div className="h-8" />
     </div>
   );
 }
