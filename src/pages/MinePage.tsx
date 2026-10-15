@@ -2,15 +2,33 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Info, Shield, ListOrdered, Headphones, CreditCard, Gift, LogOut, ChevronRight, CreditCard as RechargeIcon, ArrowDownToLine, Activity, TrendingUp, UserCircle } from 'lucide-react';
 import AppLayout from '@/components/layout/AppLayout';
-import { getCurrentUser, setCurrentUser, formatUGX } from '@/lib/storage';
+import { setCurrentUser, formatUGX } from '@/lib/storage';
+
+function getSupaUser() {
+  try {
+    const raw = localStorage.getItem('legend_user');
+    if (!raw) return null;
+    const u = JSON.parse(raw);
+    return {
+      id: u.id,
+      phone: u.phone,
+      balance: u.balance || 0,
+      referralCode: u.referral_code,
+      referral_code: u.referral_code,
+      level: u.level || 1,
+      cumulativeIncome: u.balance || 0,
+    };
+  } catch { return null; }
+}
 
 export default function MinePage() {
   const navigate = useNavigate();
-  const [currentUser, setUser] = useState(getCurrentUser());
+  const [currentUser] = useState(() => getSupaUser());
 
-  if (!currentUser) { navigate('/'); return null; }
+  if (!currentUser) { navigate('/login'); return null; }
 
   const handleSignOut = () => {
+    localStorage.removeItem('legend_user');
     setCurrentUser(null);
     navigate('/login');
   };
@@ -29,7 +47,6 @@ export default function MinePage() {
 
   return (
     <AppLayout>
-      {/* Profile Header */}
       <div className="mx-4 mt-4 rounded-2xl p-5" style={{ background: 'linear-gradient(135deg, #1a1400, #2a2000)', border: '1px solid rgba(201,168,76,0.3)' }}>
         <div className="flex items-center gap-3 mb-4">
           <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: 'rgba(201,168,76,0.15)', border: '2px solid #c9a84c' }}>
@@ -72,7 +89,6 @@ export default function MinePage() {
         </div>
       </div>
 
-      {/* Task Center Banner */}
       <button onClick={() => navigate('/tasks')} className="mx-4 mt-3 rounded-2xl overflow-hidden w-[calc(100%-2rem)]">
         <div className="relative">
           <img src="https://images.unsplash.com/photo-1603584173870-7f23fdae1b7a?w=480&h=100&fit=crop" alt="" className="w-full h-20 object-cover" />
@@ -86,14 +102,13 @@ export default function MinePage() {
         </div>
       </button>
 
-      {/* Menu Items */}
       <div className="mx-4 mt-3 rounded-2xl overflow-hidden" style={{ background: '#151515', border: '1px solid #2a2a2a' }}>
         {menuItems.map((item, i) => {
           const Icon = item.icon;
           return (
             <button key={item.label} onClick={() => navigate(item.path)}
               className="w-full flex items-center gap-3 px-4 py-4 transition-colors hover:bg-white/5"
-              style={{ borderBottom: i < menuItems.length - 1 ? '1px solid #222' : 'none' }}>
+              style={{ borderBottom: i < menuItems.length - 1? '1px solid #222' : 'none' }}>
               <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'rgba(201,168,76,0.1)' }}>
                 <Icon size={15} className="text-[#c9a84c]" />
               </div>
@@ -104,7 +119,6 @@ export default function MinePage() {
         })}
       </div>
 
-      {/* Sign Out */}
       <div className="mx-4 mt-3 mb-4">
         <button onClick={handleSignOut} className="w-full py-4 rounded-2xl font-bold text-black gold-gradient flex items-center justify-center gap-2">
           <LogOut size={16} />
@@ -113,4 +127,4 @@ export default function MinePage() {
       </div>
     </AppLayout>
   );
-}
+      }
