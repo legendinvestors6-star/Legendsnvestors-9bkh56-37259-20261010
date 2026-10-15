@@ -55,15 +55,15 @@ export default function RegisterPage() {
       const myReferralCode = 'LEGEND' + Math.floor(100000 + Math.random() * 900000);
 
       // 4. Create user in public.users with PHONE + BALANCE + REFERRAL
-      const { data: newUser, error } = await supabase.from('users').insert({
-        phone: cleanPhone,
-        password: password, // NOTE: hash this in production!
-        balance: REGISTRATION_BONUS,
-        referral_code: myReferralCode,
-        referred_by: referredById,
-        level: 1,
-        is_admin: false
-      }).select().single();
+      // FROM THIS:
+      
+const { data: newUser, error } = await supabase.from('users').insert({
+  phone: cleanPhone,
+  password: password,
+  balance: REGISTRATION_BONUS,
+  referral_code: myReferralCode,
+  referred_by: referredById
+}).select().single();
 
       if (error) throw error;
 
