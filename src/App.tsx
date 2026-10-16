@@ -21,7 +21,7 @@ import AboutPage from "./pages/AboutPage";
 import RegulationPage from "./pages/RegulationPage";
 import CustomerServicePage from "./pages/CustomerServicePage";
 import RedeemGiftPage from "./pages/RedeemGiftPage";
-import AdminPage from "./pages/AdminPage";
+import { AdminPage } from "./pages/AdminPage"
 import InvitePage from "./pages/InvitePage";
 import WithdrawStatusPage from "./pages/WithdrawStatusPage";
 import RechargeStatusPage from "./pages/RechargeStatusPage";
