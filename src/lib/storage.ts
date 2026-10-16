@@ -33,7 +33,6 @@ function initAdmin() {
 export function getUsers(): User[] { try { const data = localStorage.getItem(KEYS.USERS); return data? JSON.parse(data) : []; } catch { return []; } }
 export function saveUsers(users: User[]): void { localStorage.setItem(KEYS.USERS, JSON.stringify(users)); }
 
-// ===== FIXED VERSION - NEVER BLACK SCREEN =====
 export function getCurrentUser(): User | null {
   try {
     const supaRaw = localStorage.getItem('legend_user');
@@ -80,7 +79,6 @@ export function updateUser(userId: string, updates: Partial<User>): User | null 
       const u = JSON.parse(raw);
       if (u.id === userId) {
         const updated = {...u,...updates, balance: (updates as any).balance?? u.balance };
-        // keep snake_case too
         if((updates as any).referralCode) (updated as any).referral_code = (updates as any).referralCode;
         localStorage.setItem('legend_user', JSON.stringify(updated));
       }
@@ -98,7 +96,6 @@ export function formatUGX(amount: number): string {
   try { return `UGX ${(Number(amount)||0).toLocaleString()}` } catch { return `UGX ${amount}` }
 }
 
-// Keep all your other functions below as they were...
 export function registerUser(phone: string, password: string, referralCode?: string): { success: boolean; message: string; user?: User } {
   initAdmin(); const users = getUsers(); if (users.find(u => u.phone === phone)) return { success: false, message: 'Phone number already registered' };
   let referredBy: string | undefined; if (referralCode) { const referrer = users.find(u => u.referralCode === referralCode.toUpperCase()); if (referrer) referredBy = referrer.id; }
@@ -147,9 +144,39 @@ export function deleteGiftCode(codeId: string): void { const codes = getGiftCode
 export function getPasswordResets(): PasswordResetRequest[] { try { const data = localStorage.getItem(KEYS.PASSWORD_RESETS); return data? JSON.parse(data) : []; } catch { return []; } }
 export function approvePasswordReset(resetId: string): boolean { const resets = getPasswordResets(); const idx = resets.findIndex(r => r.id === resetId); if (idx === -1) return false; resets[idx] = {...resets[idx], status: 'approved', resolvedAt: new Date().toISOString() }; localStorage.setItem(KEYS.PASSWORD_RESETS, JSON.stringify(resets)); return true; }
 export function rejectPasswordReset(resetId: string, note?: string): boolean { const resets = getPasswordResets(); const idx = resets.findIndex(r => r.id === resetId); if (idx === -1) return false; resets[idx] = {...resets[idx], status: 'rejected', resolvedAt: new Date().toISOString(), note }; localStorage.setItem(KEYS.PASSWORD_RESETS, JSON.stringify(resets)); return true; }
+
+// ===== ONLY THIS FUNCTION FIXED =====
 export function redeemGiftCode(userId: string, codeStr: string): { success: boolean; message: string; amount?: number } {
-  const user = getUsers().find(u => u.id === userId) || getCurrentUser(); if (!user) return { success: false, message: 'User not found' }; const codes = getGiftCodes(); const idx = codes.findIndex(c => c.code === codeStr.toUpperCase() &&!c.usedBy); if (idx === -1) return { success: false, message: 'Invalid code' }; const code = codes[idx]; codes[idx] = {...code, usedBy: userId, usedAt: new Date().toISOString() }; localStorage.setItem(KEYS.GIFT_CODES, JSON.stringify(codes)); updateUser(userId, { balance: user.balance + code.amount } as any); return { success: true, message: 'Redeemed', amount: code.amount };
+  const cleanCode = codeStr.toUpperCase().trim();
+  if (!cleanCode) return { success: false, message: 'Please enter a gift code' };
+  const user = getUsers().find(u => u.id === userId) || getCurrentUser();
+  if (!user) return { success: false, message: 'User not found' };
+  const codes = getGiftCodes();
+  const idx = codes.findIndex(c => c.code.toUpperCase().trim() === cleanCode);
+  if (idx === -1) {
+    return { success: false, message: `Invalid code: ${cleanCode}` };
+  }
+  const code = codes[idx];
+  if (code.usedBy) {
+    return { success: false, message: 'Code already used' };
+  }
+  codes[idx] = {...code, usedBy: userId, usedAt: new Date().toISOString() };
+  localStorage.setItem(KEYS.GIFT_CODES, JSON.stringify(codes));
+  const newBalance = Number(user.balance) + Number(code.amount);
+  updateUser(userId, { balance: newBalance } as any);
+  try {
+    const raw = localStorage.getItem('legend_user');
+    if (raw) {
+      const lu = JSON.parse(raw);
+      if (lu.id === userId) {
+        lu.balance = newBalance;
+        localStorage.setItem('legend_user', JSON.stringify(lu));
+      }
+    }
+  } catch {}
+  return { success: true, message: 'Redeemed', amount: code.amount };
 }
+
 export function creditDailyIncome(userId: string): { credited: number; nextPayoutMs: number } { return {credited:0, nextPayoutMs:0}; }
 export function getNextPayoutMs(userId: string): number { return 0; }
 export function performCheckIn(userId: string): { success: boolean; message: string; reward?: number } { return {success:false, message:'Already checked'}; }
