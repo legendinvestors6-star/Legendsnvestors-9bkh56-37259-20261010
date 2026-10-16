@@ -33,7 +33,6 @@ function initAdmin() {
 export function getUsers(): User[] { try { const data = localStorage.getItem(KEYS.USERS); return data? JSON.parse(data) : []; } catch { return []; } }
 export function saveUsers(users: User[]): void { localStorage.setItem(KEYS.USERS, JSON.stringify(users)); }
 
-// ===== FIXED VERSION - NEVER BLACK SCREEN =====
 export function getCurrentUser(): User | null {
   try {
     const supaRaw = localStorage.getItem('legend_user');
@@ -80,7 +79,6 @@ export function updateUser(userId: string, updates: Partial<User>): User | null 
       const u = JSON.parse(raw);
       if (u.id === userId) {
         const updated = {...u,...updates, balance: (updates as any).balance?? u.balance };
-        // keep snake_case too
         if((updates as any).referralCode) (updated as any).referral_code = (updates as any).referralCode;
         localStorage.setItem('legend_user', JSON.stringify(updated));
       }
@@ -98,7 +96,6 @@ export function formatUGX(amount: number): string {
   try { return `UGX ${(Number(amount)||0).toLocaleString()}` } catch { return `UGX ${amount}` }
 }
 
-// Keep all your other functions below as they were...
 export function registerUser(phone: string, password: string, referralCode?: string): { success: boolean; message: string; user?: User } {
   initAdmin(); const users = getUsers(); if (users.find(u => u.phone === phone)) return { success: false, message: 'Phone number already registered' };
   let referredBy: string | undefined; if (referralCode) { const referrer = users.find(u => u.referralCode === referralCode.toUpperCase()); if (referrer) referredBy = referrer.id; }
@@ -111,7 +108,7 @@ export function loginUser(phone: string, password: string): { success: boolean; 
 export function getTransactions(userId?: string): Transaction[] { try { const data = localStorage.getItem(KEYS.TRANSACTIONS); const all: Transaction[] = data? JSON.parse(data) : []; return userId? all.filter(t => t.userId === userId) : all; } catch { return []; } }
 export function addTransaction(tx: Omit<Transaction, 'id' | 'createdAt'>): Transaction { const transactions = getTransactions(); const newTx: Transaction = {...tx, id: generateId(), createdAt: new Date().toISOString(), } as Transaction; localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify([newTx,...transactions])); return newTx; }
 export function getRechargeOrders(userId?: string): RechargeOrder[] { try { const data = localStorage.getItem(KEYS.RECHARGE_ORDERS); const all: RechargeOrder[] = data? JSON.parse(data) : []; return userId? all.filter(o => o.userId === userId) : all; } catch { return []; } }
-export function createRechargeOrder(userId: string, amount: number, paymentMethod: string, phoneNumber: string): RechargeOrder { const orders = getRechargeOrders(); const order: RechargeOrder = { id: generateId(), userId, amount, paymentMethod, phoneNumber, status: 'pending', createdAt: new Date().toISOString(), mtnAccount: MTN_ACCOUNT, mtnName: MTN_NAME, } as RechargeOrder; localStorage.setItem(KEYS.RECHARGE_ORDERS, JSON.stringify([order,...orders])); return order; }
+export function createRechargeOrder(userId: string, amount: number, paymentMethod: string, phoneNumber: string): RechargeOrder { const orders = getRechargeOrders(); const order: RechargeOrder = { id: generateId(), userId, amount, paymentMethod, phoneNumber, status: 'completed', createdAt: new Date().toISOString(), mtnAccount: MTN_ACCOUNT, mtnName: MTN_NAME, } as RechargeOrder; localStorage.setItem(KEYS.RECHARGE_ORDERS, JSON.stringify([order,...orders])); const users = getUsers(); const uIdx = users.findIndex(u => u.id === userId); if (uIdx!== -1) { users[uIdx].balance += amount; users[uIdx].cumulativeIncome = (users[uIdx].cumulativeIncome || 0) + amount; saveUsers(users); try { const raw = localStorage.getItem('legend_user'); if (raw) { const lu = JSON.parse(raw); if (lu.id === userId) { lu.balance = users[uIdx].balance; localStorage.setItem('legend_user', JSON.stringify(lu)); } } } catch {} addTransaction({ userId, type: 'recharge', amount, status: 'completed', description: `Automatic recharge via ${paymentMethod}`, }); } return order; }
 export function approveRechargeOrder(orderId: string): boolean { const orders = getRechargeOrders(); const idx = orders.findIndex(o => o.id === orderId); if (idx === -1) return false; const order = orders[idx]; if (order.status!== 'pending') return false; orders[idx].status = 'completed'; localStorage.setItem(KEYS.RECHARGE_ORDERS, JSON.stringify(orders)); const users = getUsers(); const uIdx = users.findIndex(u => u.id === order.userId); if (uIdx!== -1) { users[uIdx].balance += order.amount; saveUsers(users); } addTransaction({ userId: order.userId, type: 'recharge', amount: order.amount, status: 'completed', description: `Recharge via ${order.paymentMethod}`, }); return true; }
 export function rejectRechargeOrder(orderId: string): boolean { const orders = getRechargeOrders(); const idx = orders.findIndex(o => o.id === orderId); if (idx === -1) return false; orders[idx].status = 'rejected'; localStorage.setItem(KEYS.RECHARGE_ORDERS, JSON.stringify(orders)); return true; }
 export function getWithdrawOrders(userId?: string): WithdrawOrder[] { try { const data = localStorage.getItem(KEYS.WITHDRAW_ORDERS); const all: WithdrawOrder[] = data? JSON.parse(data) : []; return userId? all.filter(o => o.userId === userId) : all; } catch { return []; } }
