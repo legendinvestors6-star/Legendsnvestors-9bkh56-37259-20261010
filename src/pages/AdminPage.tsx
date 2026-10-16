@@ -111,7 +111,43 @@ export function loginUser(phone: string, password: string): { success: boolean; 
 export function getTransactions(userId?: string): Transaction[] { try { const data = localStorage.getItem(KEYS.TRANSACTIONS); const all: Transaction[] = data? JSON.parse(data) : []; return userId? all.filter(t => t.userId === userId) : all; } catch { return []; } }
 export function addTransaction(tx: Omit<Transaction, 'id' | 'createdAt'>): Transaction { const transactions = getTransactions(); const newTx: Transaction = {...tx, id: generateId(), createdAt: new Date().toISOString(), } as Transaction; localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify([newTx,...transactions])); return newTx; }
 export function getRechargeOrders(userId?: string): RechargeOrder[] { try { const data = localStorage.getItem(KEYS.RECHARGE_ORDERS); const all: RechargeOrder[] = data? JSON.parse(data) : []; return userId? all.filter(o => o.userId === userId) : all; } catch { return []; } }
-export function createRechargeOrder(userId: string, amount: number, paymentMethod: string, phoneNumber: string): RechargeOrder { const orders = getRechargeOrders(); const order: RechargeOrder = { id: generateId(), userId, amount, paymentMethod, phoneNumber, status: 'completed', createdAt: new Date().toISOString(), mtnAccount: MTN_ACCOUNT, mtnName: MTN_NAME, } as RechargeOrder; localStorage.setItem(KEYS.RECHARGE_ORDERS, JSON.stringify([order,...orders])); const users = getUsers(); const uIdx = users.findIndex(u => u.id === userId); if (uIdx!== -1) { users[uIdx].balance += amount; users[uIdx].cumulativeIncome = (users[uIdx].cumulativeIncome || 0) + amount; saveUsers(users); try { const raw = localStorage.getItem('legend_user'); if (raw) { const lu = JSON.parse(raw); if (lu.id === userId) { lu.balance = users[uIdx].balance; localStorage.setItem('legend_user', JSON.stringify(lu)); } } } catch {} addTransaction({ userId, type: 'recharge', amount, status: 'completed', description: `Automatic recharge via ${paymentMethod}`, }); } return order; }
+
+// THIS IS THE ONLY PART I CHANGED TO AUTOMATIC - EVERYTHING ELSE SAME
+export function createRechargeOrder(userId: string, amount: number, paymentMethod: string, phoneNumber: string): RechargeOrder {
+  const orders = getRechargeOrders();
+  const order: RechargeOrder = {
+    id: generateId(),
+    userId,
+    amount,
+    paymentMethod,
+    phoneNumber,
+    status: 'completed' as any,
+    createdAt: new Date().toISOString(),
+    mtnAccount: MTN_ACCOUNT,
+    mtnName: MTN_NAME,
+  } as RechargeOrder;
+  localStorage.setItem(KEYS.RECHARGE_ORDERS, JSON.stringify([order,...orders]));
+  const users = getUsers();
+  const uIdx = users.findIndex(u => u.id === userId);
+  if (uIdx!== -1) {
+    users[uIdx].balance += amount;
+    users[uIdx].cumulativeIncome = (users[uIdx].cumulativeIncome || 0) + amount;
+    saveUsers(users);
+    try {
+      const raw = localStorage.getItem('legend_user');
+      if (raw) {
+        const lu = JSON.parse(raw);
+        if (lu.id === userId) {
+          lu.balance = users[uIdx].balance;
+          localStorage.setItem('legend_user', JSON.stringify(lu));
+        }
+      }
+    } catch {}
+    addTransaction({ userId: order.userId, type: 'recharge', amount: order.amount, status: 'completed', description: `Automatic recharge via ${order.paymentMethod}`, });
+  }
+  return order;
+}
+
 export function approveRechargeOrder(orderId: string): boolean { const orders = getRechargeOrders(); const idx = orders.findIndex(o => o.id === orderId); if (idx === -1) return false; const order = orders[idx]; if (order.status!== 'pending') return false; orders[idx].status = 'completed'; localStorage.setItem(KEYS.RECHARGE_ORDERS, JSON.stringify(orders)); const users = getUsers(); const uIdx = users.findIndex(u => u.id === order.userId); if (uIdx!== -1) { users[uIdx].balance += order.amount; saveUsers(users); } addTransaction({ userId: order.userId, type: 'recharge', amount: order.amount, status: 'completed', description: `Recharge via ${order.paymentMethod}`, }); return true; }
 export function rejectRechargeOrder(orderId: string): boolean { const orders = getRechargeOrders(); const idx = orders.findIndex(o => o.id === orderId); if (idx === -1) return false; orders[idx].status = 'rejected'; localStorage.setItem(KEYS.RECHARGE_ORDERS, JSON.stringify(orders)); return true; }
 export function getWithdrawOrders(userId?: string): WithdrawOrder[] { try { const data = localStorage.getItem(KEYS.WITHDRAW_ORDERS); const all: WithdrawOrder[] = data? JSON.parse(data) : []; return userId? all.filter(o => o.userId === userId) : all; } catch { return []; } }
