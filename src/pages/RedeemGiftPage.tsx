@@ -1,104 +1,131 @@
 import { useState } from 'react';
-import { ChevronLeft, Gift, Tag } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { redeemGiftCode, formatUGX } from '@/lib/storage';
-import { TELEGRAM_LINK } from '@/constants/products';
+import { Gift, ArrowLeft } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
+import { formatUGX } from '@/lib/storage';
 
-function getSupaUser() {
-  try {
-    const raw = localStorage.getItem('legend_user');
-    if (!raw) return null;
-    const u = JSON.parse(raw);
-    return { id: u.id, phone: u.phone, balance: u.balance||0, referral_code: u.referral_code };
-  } catch { return null; }
-}
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 export default function RedeemGiftPage() {
   const navigate = useNavigate();
-  const [currentUser] = useState(() => getSupaUser());
-  const [code, setCode] = useState('');
+  const [giftCodeInput, setGiftCodeInput] = useState('');
   const [loading, setLoading] = useState(false);
 
-  if (!currentUser) { navigate('/login'); return null; }
-
-  const handleRedeem = () => {
-    if (!code.trim()) { toast.error('Please enter a gift code'); return; }
-    setLoading(true);
-    setTimeout(() => {
-      const result = redeemGiftCode(currentUser.id, code.trim().toUpperCase());
-      if (result.success) {
-        toast.success(`Gift code redeemed! +${formatUGX(result.amount || 0)}`);
-        setCode('');
-        // refresh balance
-        const raw = localStorage.getItem('legend_user');
-        if (raw) {
-          const updated = JSON.parse(raw);
-          console.log('New balance:', updated.balance);
-        }
-      } else {
-        toast.error(result.message);
-      }
-      setLoading(false);
-    }, 600);
+  // Get current user from localStorage
+  const getCurrentUser = () => {
+    try {
+      const raw = localStorage.getItem('legend_user');
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch { return null; }
   };
+  const currentUser = getCurrentUser();
+
+  // ===== THIS IS WHERE YOUR CODE GOES - REPLACE YOUR OLD FUNCTION WITH THIS =====
+  const handleRedeem = async () => {
+    const code = giftCodeInput.toUpperCase().trim();
+    if(!code) return toast.error('Enter code');
+    if(!currentUser) return toast.error('Please login first');
+
+    setLoading(true);
+
+    // Check Supabase - CLOUD, works for ALL users
+    const { data, error } = await supabase.from('gift_codes').select('*').eq('code', code).single();
+    
+    if(error || !data) {
+      toast.error(`Invalid code: ${code}`);
+      setLoading(false);
+      return;
+    }
+    if(data.used_by) {
+      toast.error('Code already used');
+      setLoading(false);
+      return;
+    }
+
+    // Mark used + add balance
+    const { error: updateError } = await supabase.from('gift_codes').update({ 
+      used_by: currentUser.id, 
+      used_at: new Date().toISOString() 
+    }).eq('id', data.id);
+
+    if (updateError) {
+      toast.error('Failed to redeem');
+      setLoading(false);
+      return;
+    }
+
+    // Add balance to user
+    const newBalance = (currentUser.balance || 0) + data.amount;
+    await supabase.from('users').update({ balance: newBalance }).eq('id', currentUser.id);
+
+    // Update local storage too
+    try {
+      const updated = { ...currentUser, balance: newBalance };
+      localStorage.setItem('legend_user', JSON.stringify(updated));
+    } catch {}
+
+    toast.success(`Redeemed ${formatUGX(data.amount)}!`);
+    setGiftCodeInput('');
+    setLoading(false);
+  };
+  // ===== END OF YOUR FUNCTION =====
 
   return (
-    <div className="app-container min-h-screen" style={{ background: '#0a0a0a' }}>
-      <div className="flex items-center gap-3 p-4" style={{ background: '#111111', borderBottom: '1px solid #2a2a2a' }}>
-        <button onClick={() => navigate(-1)} className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#1e1e1e' }}>
-          <ChevronLeft size={18} className="text-gray-400" />
+    <div className="min-h-screen bg-[#0a0a0a] text-white">
+      <div className="flex items-center gap-3 p-4 bg-[#111] border-b border-[#222]">
+        <button onClick={() => navigate(-1)} className="w-8 h-8 rounded-full bg-[#1e1e1e] flex items-center justify-center">
+          <ArrowLeft size={16} />
         </button>
-        <div className="flex items-center gap-2">
-          <h1 className="text-white font-bold text-lg">Redeem Gift</h1>
-        </div>
+        <h1 className="font-black">Redeem Gift</h1>
       </div>
 
-      <div className="px-4 mt-5 space-y-4">
-        <div className="rounded-2xl p-5" style={{ background: '#151515', border: '1px solid rgba(201,168,76,0.2)' }}>
-          <h2 className="font-black text-white mb-1">Legend Investors</h2>
-          <p className="text-gray-500 text-sm mb-5">Redeem Gift Code - {currentUser.phone}</p>
+      <div className="p-4 space-y-4">
+        <div className="bg-[#151515] border border-[#2a2a2a] rounded-2xl p-4 space-y-4">
+          <div>
+            <p className="font-bold">Legend Investors</p>
+            <p className="text-xs text-gray-500 mt-1">Redeem Gift Code - 0756406186</p>
+            <p className="text-xs text-gray-500 mt-2">Get gift codes from the official group</p>
+            <a href="#" className="mt-3 block w-full text-center py-3 rounded-xl bg-[#1e2a3a] text-[#4a90e2] text-sm">Official Telegram Group</a>
+          </div>
 
-          <p className="text-sm text-gray-500 mb-2">Get gift codes from the official group</p>
-          <a href={TELEGRAM_LINK} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-xl px-4 py-3 mb-5"
-            style={{ background: 'rgba(0,136,204,0.1)', border: '1px solid rgba(0,136,204,0.2)' }}>
-            <span className="text-[#0088cc] text-sm">Official Telegram Group</span>
-          </a>
-
-          <div className="mb-4">
-            <label className="text-sm font-medium text-gray-400 mb-2 block flex items-center gap-1.5">
-              <Tag size={13} className="text-[#c9a84c]" /> Gift Code
+          <div className="space-y-2">
+            <label className="text-xs text-gray-400 flex items-center gap-1">
+              <Gift size={12} className="text-[#c9a84c]" /> Gift Code
             </label>
             <input
-              type="text"
-              value={code}
-              onChange={e => setCode(e.target.value.toUpperCase())}
-              placeholder="Enter gift code (e.g. ABC12345)"
+              value={giftCodeInput}
+              onChange={(e) => setGiftCodeInput(e.target.value.toUpperCase())}
+              placeholder="Enter gift code"
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
-              autoCapitalize="off"
-              className="w-full rounded-xl px-4 py-3.5 text-sm outline-none text-white uppercase tracking-widest placeholder-gray-600"
-              style={{ background: '#1e1e1e', border: '1.5px solid #333' }}
+              className="w-full bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3 text-sm outline-none uppercase tracking-widest"
             />
           </div>
 
-          <button onClick={handleRedeem} disabled={loading}
-            className="w-full gold-gradient py-4 rounded-xl font-bold text-black disabled:opacity-60 flex items-center justify-center gap-2">
+          <button
+            onClick={handleRedeem}
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-[#c9a84c] to-[#f5d76e] text-black font-black py-3.5 rounded-xl flex items-center justify-center gap-2"
+          >
             <Gift size={18} />
-            {loading? 'Redeeming...' : 'Confirm'}
+            {loading ? 'Checking...' : 'Confirm'}
           </button>
         </div>
 
-        <div className="rounded-2xl p-4" style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.15)' }}>
-          <p className="text-[#c9a84c] text-sm font-semibold mb-2">How to get gift codes?</p>
-          <div className="space-y-1.5 text-xs text-gray-500">
-            <p>• Gift codes are created exclusively by the platform admin.</p>
-            <p>• Join the official Telegram group to receive codes.</p>
-            <p>• Each code can only be used once.</p>
-            <p>• Redeemed balance is added instantly.</p>
-          </div>
+        <div className="bg-[#151515]/50 border border-[#2a2a2a]/50 rounded-2xl p-4">
+          <p className="text-[#c9a84c] text-sm font-bold">How to get gift codes?</p>
+          <ul className="text-xs text-gray-500 mt-2 space-y-1">
+            <li>• Gift codes are created exclusively by the platform admin.</li>
+            <li>• Join the official Telegram group to receive codes.</li>
+            <li>• Each code can only be used once.</li>
+            <li>• Redeemed balance is added instantly.</li>
+          </ul>
         </div>
       </div>
     </div>
