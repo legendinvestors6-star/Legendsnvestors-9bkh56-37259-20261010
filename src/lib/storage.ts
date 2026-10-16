@@ -1,5 +1,12 @@
 import type { User, Transaction, RechargeOrder, WithdrawOrder, UserProduct } from '@/types';
 import { REGISTRATION_BONUS, PRODUCTS, MTN_ACCOUNT, MTN_NAME } from '@/constants/products';
+import { createClient } from '@supabase/supabase-js';
+
+// Supabase for cloud
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 const KEYS = {
   USERS: 'legend_users',
@@ -138,14 +145,15 @@ export function getTeamMembers(userId: string): { level1: User[]; level2: User[]
   } catch { return {level1:[], level2:[], level3:[]}; }
 }
 export function getTeamCommissions(userId: string): { level1: number; level2: number; level3: number } { try { const txs = getTransactions(userId).filter(t => t.type === 'referral'); return { level1: txs.filter(t => t.description.includes('Level 1')).reduce((sum, t) => sum + t.amount, 0), level2: 0, level3: 0, }; } catch { return {level1:0, level2:0, level3:0}; } }
+
+// OLD LOCAL GIFT CODE (keep for backup)
 export function getGiftCodes(): GiftCode[] { try { const data = localStorage.getItem(KEYS.GIFT_CODES); return data? JSON.parse(data) : []; } catch { return []; } }
 export function createGiftCode(amount: number, note?: string, customCode?: string): GiftCode { const codes = getGiftCodes(); const code: GiftCode = { id: generateId(), code: customCode? customCode.toUpperCase() : Math.random().toString(36).substr(2, 8).toUpperCase(), amount, note, expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), createdAt: new Date().toISOString(), }; localStorage.setItem(KEYS.GIFT_CODES, JSON.stringify([code,...codes])); return code; }
 export function deleteGiftCode(codeId: string): void { const codes = getGiftCodes().filter(c => c.id!== codeId); localStorage.setItem(KEYS.GIFT_CODES, JSON.stringify(codes)); }
+
 export function getPasswordResets(): PasswordResetRequest[] { try { const data = localStorage.getItem(KEYS.PASSWORD_RESETS); return data? JSON.parse(data) : []; } catch { return []; } }
 export function approvePasswordReset(resetId: string): boolean { const resets = getPasswordResets(); const idx = resets.findIndex(r => r.id === resetId); if (idx === -1) return false; resets[idx] = {...resets[idx], status: 'approved', resolvedAt: new Date().toISOString() }; localStorage.setItem(KEYS.PASSWORD_RESETS, JSON.stringify(resets)); return true; }
 export function rejectPasswordReset(resetId: string, note?: string): boolean { const resets = getPasswordResets(); const idx = resets.findIndex(r => r.id === resetId); if (idx === -1) return false; resets[idx] = {...resets[idx], status: 'rejected', resolvedAt: new Date().toISOString(), note }; localStorage.setItem(KEYS.PASSWORD_RESETS, JSON.stringify(resets)); return true; }
-
-// ===== ONLY THIS FUNCTION FIXED =====
 export function redeemGiftCode(userId: string, codeStr: string): { success: boolean; message: string; amount?: number } {
   const cleanCode = codeStr.toUpperCase().trim();
   if (!cleanCode) return { success: false, message: 'Please enter a gift code' };
@@ -153,32 +161,46 @@ export function redeemGiftCode(userId: string, codeStr: string): { success: bool
   if (!user) return { success: false, message: 'User not found' };
   const codes = getGiftCodes();
   const idx = codes.findIndex(c => c.code.toUpperCase().trim() === cleanCode);
-  if (idx === -1) {
-    return { success: false, message: `Invalid code: ${cleanCode}` };
-  }
+  if (idx === -1) return { success: false, message: `Invalid code: ${cleanCode}` };
   const code = codes[idx];
-  if (code.usedBy) {
-    return { success: false, message: 'Code already used' };
-  }
+  if (code.usedBy) return { success: false, message: 'Code already used' };
   codes[idx] = {...code, usedBy: userId, usedAt: new Date().toISOString() };
   localStorage.setItem(KEYS.GIFT_CODES, JSON.stringify(codes));
   const newBalance = Number(user.balance) + Number(code.amount);
   updateUser(userId, { balance: newBalance } as any);
-  try {
-    const raw = localStorage.getItem('legend_user');
-    if (raw) {
-      const lu = JSON.parse(raw);
-      if (lu.id === userId) {
-        lu.balance = newBalance;
-        localStorage.setItem('legend_user', JSON.stringify(lu));
-      }
-    }
-  } catch {}
   return { success: true, message: 'Redeemed', amount: code.amount };
 }
-
 export function creditDailyIncome(userId: string): { credited: number; nextPayoutMs: number } { return {credited:0, nextPayoutMs:0}; }
 export function getNextPayoutMs(userId: string): number { return 0; }
 export function performCheckIn(userId: string): { success: boolean; message: string; reward?: number } { return {success:false, message:'Already checked'}; }
 export function createPasswordReset(phone: string, newPassword: string): { success: boolean; message: string } { return {success:true, message:'Submitted'}; }
 export function getPasswordResetStatus(phone: string): PasswordResetRequest | null { return null; }
+
+// ==================== NEW CLOUD FUNCTIONS - USE THESE NOW ====================
+// Paste your code EXACTLY HERE - at the very bottom of file
+
+export async function getGiftCodesCloud() {
+  const { data } = await supabase.from('gift_codes').select('*').order('created_at', {ascending: false});
+  return data || [];
+}
+
+export async function createGiftCodeCloud(code: string, amount: number) {
+  const { data, error } = await supabase.from('gift_codes').insert({
+    id: Date.now().toString(),
+    code: code.toUpperCase().trim(),
+    amount: Number(amount)
+  }).select();
+  if (error) throw error;
+  return data[0];
+}
+
+export async function redeemGiftCodeCloud(userId: string, codeStr: string) {
+  const clean = codeStr.toUpperCase().trim();
+  const { data, error } = await supabase.from('gift_codes').select('*').eq('code', clean).single();
+  
+  if (error || !data) return { success: false, message: `Invalid code: ${clean}` };
+  if (data.used_by) return { success: false, message: 'Code already used' };
+
+  await supabase.from('gift_codes').update({ used_by: userId, used_at: new Date().toISOString() }).eq('id', data.id);
+  
+  const { data: user } = await
