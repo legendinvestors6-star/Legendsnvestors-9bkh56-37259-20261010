@@ -45,7 +45,6 @@ export default function AdminPage() {
   const totalBal = normalUsers.reduce((s, u) => s + (u.balance || 0), 0);
   const filtered = normalUsers.filter(u => u.phone?.includes(searchQ));
 
-  // --- ACTIONS ---
   const updateBalance = async (userId: string, newBalance: number) => {
     const { error } = await supabase.from('users').update({ balance: newBalance }).eq('id', userId);
     if (error) toast.error(error.message);
@@ -66,12 +65,13 @@ export default function AdminPage() {
     toast.success('Approved + ' + r.amount); fetchAll();
   };
 
+  // ✅ FIXED - No more id field
   const createGift = async () => {
     if (!gcCode || !gcAmt) return toast.error('Enter code & amount');
     const { error } = await supabase.from('gift_codes').insert({
-      id: Date.now().toString(),
       code: gcCode.toUpperCase().trim(),
-      amount: parseInt(gcAmt)
+      amount: parseInt(gcAmt),
+      is_used: false
     });
     if (error) toast.error(error.message.includes('duplicate') ? 'Code already exists' : error.message);
     else { toast.success('Created ' + gcCode.toUpperCase()); setGcCode(''); setGcAmt(''); fetchAll(); }
@@ -79,6 +79,7 @@ export default function AdminPage() {
 
   const deleteGift = async (id: string) => {
     await supabase.from('gift_codes').delete().eq('id', id);
+    toast.success('Deleted');
     fetchAll();
   };
 
@@ -98,7 +99,7 @@ export default function AdminPage() {
           {k:'recharge', l:`Recharge (${pendingRecharge.length})`, i:DollarSign},
           {k:'gifts', l:`Gift Codes (${giftCodes.length})`, i:Gift},
         ].map(t => (
-          <button key={t.k} onClick={()=>setTab(t.k)} className={`px-4 py-3 text-xs font-bold ${tab===t.k?'text-[#c9a84c] border-b-2 border-[#c9a84c]':'text-[#666]'}`}>{t.l}</button>
+          <button key={t.k} onClick={()=>setTab(t.k)} className={`px-4 py-3 text-xs font-bold whitespace-nowrap ${tab===t.k?'text-[#c9a84c] border-b-2 border-[#c9a84c]':'text-[#666]'}`}>{t.l}</button>
         ))}
       </div>
 
@@ -111,7 +112,7 @@ export default function AdminPage() {
             <div className="bg-[#151515] border border-[#222] p-4 rounded-2xl"><p className="text-2xl font-black">{giftCodes.length}</p><p className="text-xs text-gray-500">Gift Codes</p></div>
           </div>
         )}
-
+        {/* ... rest same ... */}
         {tab==='users' && (
           <div className="space-y-3">
             <div className="flex gap-2 bg-[#1a1a1a] border border-[#333] rounded-xl px-3 py-2.5"><Search size={14} className="text-gray-500"/><input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search phone..." className="bg-transparent outline-none text-sm w-full"/></div>
@@ -138,7 +139,6 @@ export default function AdminPage() {
             ))}
           </div>
         )}
-
         {tab==='recharge' && (
           <div className="space-y-2">
             {recharges.map(r=>(
@@ -149,7 +149,6 @@ export default function AdminPage() {
             ))}
           </div>
         )}
-
         {tab==='gifts' && (
           <div className="space-y-4">
             <div className="bg-[#151515] border border-[#2a2a2a] rounded-2xl p-4 space-y-3">
