@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Users, CreditCard, ArrowDownToLine, BarChart3, Check, X, Search, LogOut, Shield, TrendingUp, Gift, Bell, DollarSign, Trash2, Eye, Copy, Plus } from 'lucide-react';
+import { Users, CreditCard, ArrowDownToLine, BarChart3, Search, LogOut, Shield, TrendingUp, Gift, DollarSign } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { createClient } from '@supabase/supabase-js';
 import { PRODUCTS } from '@/constants/products';
 import {
   getRechargeOrders, getWithdrawOrders, getUserProducts,
-  approveRechargeOrder, rejectRechargeOrder, approveWithdrawOrder, rejectWithdrawOrder,
-  formatUGX, updateUser, addTransaction, getTransactions,
+  formatUGX,
   getGiftCodes, createGiftCode, deleteGiftCode,
-  getPasswordResets, approvePasswordReset, rejectPasswordReset
+  getPasswordResets,
 } from '@/lib/storage';
 
 const supabase = createClient(
@@ -22,9 +21,14 @@ export default function AdminPage() {
   const [tab, setTab] = useState('overview');
   const [searchQ, setSearchQ] = useState('');
   const [refresh, setRefresh] = useState(0);
-  const [pesaRecharges, setPesaRecharges] = useState([]);
-  const [supaUsers, setSupaUsers] = useState([]);
+  const [pesaRecharges, setPesaRecharges] = useState<any[]>([]);
+  const [supaUsers, setSupaUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [giftCodes, setGiftCodes] = useState<any[]>([]);
+
+  useEffect(() => {
+    setGiftCodes(getGiftCodes());
+  }, [refresh, tab]);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -72,7 +76,7 @@ export default function AdminPage() {
   const passwordResets = getPasswordResets();
   const pendingResets = passwordResets.filter((r) => r.status === 'pending');
 
-  const getReferralCount = (user) => allUsers.filter((x) => x.referred_by === user.referral_code).length;
+  const getReferralCount = (user:any) => allUsers.filter((x) => x.referred_by === user.referral_code).length;
 
   const tabs = [
     { key: 'overview', label: 'Overview', icon: BarChart3 },
@@ -115,7 +119,6 @@ export default function AdminPage() {
               <div className="rounded-2xl p-4 bg-[#151515] border border-[#2a2a2a]"><p className="text-3xl font-black text-green-400">{userProducts.filter((p) => p.status === 'active').length}</p><p className="text-gray-500 text-xs">Active Products</p></div>
             </div>
             <div className="rounded-2xl p-4 bg-[#151515] border border-yellow-900/20"><p className="text-gray-500 text-xs">Total Platform Balance</p><p className="text-[#c9a84c] text-2xl font-black">{formatUGX(totalBalance)}</p></div>
-            <div className="rounded-2xl p-4 bg-[#151515] border border-[#2a2a2a]"><p className="text-gray-500 text-xs">Total Completed Recharges</p><p className="text-white text-2xl font-black">{formatUGX(totalRecharge)}</p></div>
           </div>
         )}
 
@@ -125,11 +128,9 @@ export default function AdminPage() {
               <Search size={14} className="text-gray-500" />
               <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search by phone..." className="flex-1 bg-transparent outline-none text-sm text-white" />
             </div>
-            <p className="text-gray-400 text-xs">{filteredUsers.length} users (Total {supaUsers.length}) - Admin: {adminUser?.phone} Code: {adminUser?.referral_code}</p>
             {filteredUsers.map((user) => (
               <div key={user.id} className="rounded-2xl p-4" style={{ background: '#151515', border: '1px solid #2a2a2a' }}>
                 <p className="font-bold text-sm">{user.phone}</p>
-                <p className="text-gray-500 text-xs">{user.created_at? new Date(user.created_at).toLocaleString() : ''} - Referred by: {user.referred_by || 'NONE'}</p>
                 <div className="grid grid-cols-3 gap-2 mt-2">
                   <div className="rounded-xl p-2 text-center bg-[#1e1e1e]"><p className="text-[#c9a84c] font-bold text-sm">{formatUGX(user.balance)}</p><p className="text-gray-600 text-[10px]">Balance</p></div>
                   <div className="rounded-xl p-2 text-center bg-[#1e1e1e]"><p className="text-white font-bold text-sm">{user.referral_code}</p><p className="text-gray-600 text-[10px]">My Code</p></div>
@@ -140,18 +141,52 @@ export default function AdminPage() {
           </div>
         )}
 
-        {tab === 'pesajet' && (
-          <div className="space-y-3">
-            <div className="flex justify-between"><p className="text-gray-400 text-xs">{pesaRecharges.length} orders</p><button onClick={() => setRefresh(r => r+1)} className="text-xs px-3 py-1.5 rounded-full bg-yellow-500 text-black font-bold">Refresh</button></div>
-            {pesaRecharges.map((r) => (<div key={r.id} className="rounded-2xl p-4 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{r.amount} - {r.phone} - {r.status} - {r.provider}</p><p className="text-gray-500 text-xs">Ref: {r.reference}</p></div>))}
+        {tab === 'gifts' && (
+          <div className="space-y-4">
+            <div className="rounded-2xl p-4 bg-[#151515] border border-[#2a2a2a] space-y-3">
+              <p className="font-bold text-sm text-[#c9a84c]">Create Gift Code - FIXED</p>
+              <input id="gc_code" placeholder="Code e.g. LEGEND100" className="w-full rounded-xl px-3 py-3 bg-[#1e1e1e] border border-[#333] text-white text-sm outline-none"/>
+              <input id="gc_amt" type="number" placeholder="Amount e.g. 5000" className="w-full rounded-xl px-3 py-3 bg-[#1e1e1e] border border-[#333] text-white text-sm outline-none"/>
+              <button
+                onClick={()=>{
+                  const cEl = document.getElementById('gc_code') as HTMLInputElement;
+                  const aEl = document.getElementById('gc_amt') as HTMLInputElement;
+                  const c = cEl?.value?.trim().toUpperCase();
+                  const a = parseInt(aEl?.value || '0');
+                  if(!c||!a){ toast.error('Enter code & amount'); return; }
+                  // FIXED CALL - amount first, then note, then customCode
+                  createGiftCode(a, '', c);
+                  toast.success(`Created ${c} - UGX ${a}`);
+                  cEl.value = '';
+                  aEl.value = '';
+                  setGiftCodes(getGiftCodes());
+                  setRefresh(r=>r+1);
+                }}
+                className="w-full py-3 rounded-xl bg-yellow-500 text-black font-bold text-sm"
+              >
+                Create Code
+              </button>
+            </div>
+            <div className="space-y-2">
+              <p className="text-gray-400 text-xs">{giftCodes.length} codes</p>
+              {giftCodes.map((g:any)=>(
+                <div key={g.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a] flex justify-between items-center">
+                  <div>
+                    <p className="font-bold text-sm">{g.code}</p>
+                    <p className="text-xs text-[#c9a84c]">{formatUGX(g.amount)} - {g.usedBy?'USED':'ACTIVE'}</p>
+                  </div>
+                  <button onClick={()=>{deleteGiftCode(g.id); setGiftCodes(getGiftCodes());}} className="text-red-400 text-xs">Delete</button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
-        {tab === 'recharge' && (<div className="space-y-2">{rechargeOrders.map((o) => (<div key={o.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{o.amount} - {o.status}</p></div>))}</div>)}
-        {tab === 'withdraw' && (<div className="space-y-2">{withdrawOrders.map((o) => (<div key={o.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{o.amount} - {o.status}</p></div>))}</div>)}
-        {tab === 'products' && (<div className="space-y-2">{PRODUCTS.map((p) => (<div key={p.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{p.name} - {formatUGX(p.price)}</p></div>))}</div>)}
-        {tab === 'resets' && (<div className="space-y-2">{passwordResets.map((r) => (<div key={r.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{r.phone} - {r.status}</p></div>))}</div>)}
-        {tab === 'gifts' && (<div className="space-y-4"><div className="rounded-2xl p-4 bg-[#151515] border border-[#2a2a2a] space-y-3"><p className="font-bold text-sm text-[#c9a84c]">Create Gift Code</p><input id="gc_code" placeholder="Code e.g. LEGEND100" className="w-full rounded-xl px-3 py-3 bg-[#1e1e1e] border border-[#333] text-white text-sm outline-none"/><input id="gc_amt" type="number" placeholder="Amount e.g. 5000" className="w-full rounded-xl px-3 py-3 bg-[#1e1e1e] border border-[#333] text-white text-sm outline-none"/><button onClick={()=>{const c=(document.getElementById('gc_code') as any).value; const a=(document.getElementById('gc_amt') as any).value; if(!c||!a)return alert('Enter code & amount'); createGiftCode({id:Date.now().toString(),code:c.toUpperCase().trim(),amount:parseInt(a),used:false,createdAt:new Date().toISOString()} as any); alert('Created '+c.toUpperCase()+' UGX '+a); location.reload();}} className="w-full py-3 rounded-xl bg-yellow-500 text-black font-bold text-sm">Create Code</button></div><div className="space-y-2"><p className="text-gray-400 text-xs">{getGiftCodes().length} codes</p>{getGiftCodes().map((g:any)=>(<div key={g.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a] flex justify-between items-center"><div><p className="font-bold text-sm">{g.code}</p><p className="text-xs text-[#c9a84c]">{formatUGX(g.amount)} - {g.used?'USED':'ACTIVE'}</p></div><button onClick={()=>{deleteGiftCode(g.id); location.reload();}} className="text-red-400 text-xs">Delete</button></div>))}</div></div>)}
+        {tab === 'pesajet' && (<div>{pesaRecharges.map((r:any)=>(<div key={r.id} className="rounded-2xl p-4 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{r.amount} - {r.phone} - {r.status}</p></div>))}</div>)}
+        {tab === 'recharge' && (<div>{rechargeOrders.map((o:any)=>(<div key={o.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{o.amount} - {o.status}</p></div>))}</div>)}
+        {tab === 'withdraw' && (<div>{withdrawOrders.map((o:any)=>(<div key={o.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{o.amount} - {o.status}</p></div>))}</div>)}
+        {tab === 'products' && (<div>{PRODUCTS.map((p:any)=>(<div key={p.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{p.name}</p></div>))}</div>)}
+        {tab === 'resets' && (<div>{passwordResets.map((r:any)=>(<div key={r.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{r.phone} - {r.status}</p></div>))}</div>)}
       </div>
     </div>
   );
