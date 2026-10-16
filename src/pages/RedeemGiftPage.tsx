@@ -15,7 +15,6 @@ export default function RedeemGiftPage() {
   const [giftCodeInput, setGiftCodeInput] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Get current user from localStorage
   const getCurrentUser = () => {
     try {
       const raw = localStorage.getItem('legend_user');
@@ -25,55 +24,74 @@ export default function RedeemGiftPage() {
   };
   const currentUser = getCurrentUser();
 
-  // ===== THIS IS WHERE YOUR CODE GOES - REPLACE YOUR OLD FUNCTION WITH THIS =====
   const handleRedeem = async () => {
     const code = giftCodeInput.toUpperCase().trim();
     if(!code) return toast.error('Enter code');
     if(!currentUser) return toast.error('Please login first');
 
     setLoading(true);
-
-    // Check Supabase - CLOUD, works for ALL users
-    const { data, error } = await supabase.from('gift_codes').select('*').eq('code', code).single();
-    
-    if(error || !data) {
-      toast.error(`Invalid code: ${code}`);
-      setLoading(false);
-      return;
-    }
-    if(data.used_by) {
-      toast.error('Code already used');
-      setLoading(false);
-      return;
-    }
-
-    // Mark used + add balance
-    const { error: updateError } = await supabase.from('gift_codes').update({ 
-      used_by: currentUser.id, 
-      used_at: new Date().toISOString() 
-    }).eq('id', data.id);
-
-    if (updateError) {
-      toast.error('Failed to redeem');
-      setLoading(false);
-      return;
-    }
-
-    // Add balance to user
-    const newBalance = (currentUser.balance || 0) + data.amount;
-    await supabase.from('users').update({ balance: newBalance }).eq('id', currentUser.id);
-
-    // Update local storage too
     try {
-      const updated = { ...currentUser, balance: newBalance };
-      localStorage.setItem('legend_user', JSON.stringify(updated));
-    } catch {}
+      // 1. Check code from Supabase
+      const { data, error } = await supabase.from('gift_codes').select('*').eq('code', code).single();
+      
+      if(error || !data) {
+        toast.error(`Invalid code: ${code}`);
+        setLoading(false);
+        return;
+      }
+      if((data as any).used_by) {
+        toast.error('Code already used');
+        setLoading(false);
+        return;
+      }
 
-    toast.success(`Redeemed ${formatUGX(data.amount)}!`);
-    setGiftCodeInput('');
+      // 2. Get fresh balance from DB (not localStorage)
+      const { data: userData, error: userError } = await supabase.from('users').select('*').eq('id', currentUser.id).single();
+      
+      if(userError || !userData) {
+        toast.error('User not found');
+        setLoading(false);
+        return;
+      }
+
+      // 3. FIRST add balance (safer order)
+      const newBalance = (userData.balance || 0) + Number(data.amount);
+      const { error: balError } = await supabase.from('users').update({ balance: newBalance }).eq('id', currentUser.id);
+
+      if (balError) {
+        toast.error('Failed to add balance: ' + balError.message);
+        setLoading(false);
+        return;
+      }
+
+      // 4. THEN mark code as used
+      const { error: updateError } = await supabase.from('gift_codes').update({ 
+        used_by: currentUser.phone || currentUser.id, 
+        used_at: new Date().toISOString() 
+      }).eq('id', data.id);
+
+      if (updateError) {
+        // Rollback balance if marking fails
+        await supabase.from('users').update({ balance: userData.balance }).eq('id', currentUser.id);
+        toast.error('Failed to redeem');
+        setLoading(false);
+        return;
+      }
+
+      // 5. Update local storage
+      try {
+        const updated = { ...currentUser, ...userData, balance: newBalance };
+        localStorage.setItem('legend_user', JSON.stringify(updated));
+      } catch {}
+
+      toast.success(`Redeemed ${formatUGX(data.amount)}!`);
+      setGiftCodeInput('');
+      
+    } catch (err: any) {
+      toast.error(err.message || 'Redeem failed');
+    }
     setLoading(false);
   };
-  // ===== END OF YOUR FUNCTION =====
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
@@ -111,7 +129,7 @@ export default function RedeemGiftPage() {
           <button
             onClick={handleRedeem}
             disabled={loading}
-            className="w-full bg-gradient-to-r from-[#c9a84c] to-[#f5d76e] text-black font-black py-3.5 rounded-xl flex items-center justify-center gap-2"
+            className="w-full bg-gradient-to-r from-[#c9a84c] to-[#f5d76e] text-black font-black py-3.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <Gift size={18} />
             {loading ? 'Checking...' : 'Confirm'}
