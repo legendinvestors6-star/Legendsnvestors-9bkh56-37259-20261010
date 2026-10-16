@@ -26,10 +26,16 @@ export default function RedeemGiftPage() {
     if (!code.trim()) { toast.error('Please enter a gift code'); return; }
     setLoading(true);
     setTimeout(() => {
-      const result = redeemGiftCode(currentUser.id, code.trim());
+      const result = redeemGiftCode(currentUser.id, code.trim().toUpperCase());
       if (result.success) {
         toast.success(`Gift code redeemed! +${formatUGX(result.amount || 0)}`);
         setCode('');
+        // refresh balance
+        const raw = localStorage.getItem('legend_user');
+        if (raw) {
+          const updated = JSON.parse(raw);
+          console.log('New balance:', updated.balance);
+        }
       } else {
         toast.error(result.message);
       }
@@ -44,34 +50,19 @@ export default function RedeemGiftPage() {
           <ChevronLeft size={18} className="text-gray-400" />
         </button>
         <div className="flex items-center gap-2">
-          <div className="flex flex-col gap-0.5">
-            <div className="w-4 h-0.5 gold-gradient rounded-full" />
-            <div className="w-4 h-0.5 gold-gradient rounded-full" />
-            <div className="w-4 h-0.5 gold-gradient rounded-full" />
-          </div>
           <h1 className="text-white font-bold text-lg">Redeem Gift</h1>
         </div>
       </div>
 
       <div className="px-4 mt-5 space-y-4">
         <div className="rounded-2xl p-5" style={{ background: '#151515', border: '1px solid rgba(201,168,76,0.2)' }}>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="flex flex-col gap-0.5">
-              <div className="w-4 h-0.5 gold-gradient rounded-full" />
-              <div className="w-4 h-0.5 gold-gradient rounded-full" />
-              <div className="w-4 h-0.5 gold-gradient rounded-full" />
-            </div>
-            <h2 className="font-black text-white">Legend Investors</h2>
-          </div>
+          <h2 className="font-black text-white mb-1">Legend Investors</h2>
           <p className="text-gray-500 text-sm mb-5">Redeem Gift Code - {currentUser.phone}</p>
 
           <p className="text-sm text-gray-500 mb-2">Get gift codes from the official group</p>
           <a href={TELEGRAM_LINK} target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-2 rounded-xl px-4 py-3 mb-5"
             style={{ background: 'rgba(0,136,204,0.1)', border: '1px solid rgba(0,136,204,0.2)' }}>
-            <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: '#0088cc' }}>
-              <span className="text-white text-xs font-bold">✈</span>
-            </div>
             <span className="text-[#0088cc] text-sm">Official Telegram Group</span>
           </a>
 
@@ -84,6 +75,10 @@ export default function RedeemGiftPage() {
               value={code}
               onChange={e => setCode(e.target.value.toUpperCase())}
               placeholder="Enter gift code (e.g. ABC12345)"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              autoCapitalize="off"
               className="w-full rounded-xl px-4 py-3.5 text-sm outline-none text-white uppercase tracking-widest placeholder-gray-600"
               style={{ background: '#1e1e1e', border: '1.5px solid #333' }}
             />
@@ -100,9 +95,9 @@ export default function RedeemGiftPage() {
           <p className="text-[#c9a84c] text-sm font-semibold mb-2">How to get gift codes?</p>
           <div className="space-y-1.5 text-xs text-gray-500">
             <p>• Gift codes are created exclusively by the platform admin.</p>
-            <p>• Join the official Telegram group to receive codes shared by the admin.</p>
+            <p>• Join the official Telegram group to receive codes.</p>
             <p>• Each code can only be used once.</p>
-            <p>• Redeemed balance is added instantly to your account.</p>
+            <p>• Redeemed balance is added instantly.</p>
           </div>
         </div>
       </div>
