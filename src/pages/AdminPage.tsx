@@ -1,17 +1,15 @@
 import { useState, useEffect } from 'react';
-import { 
-  Users, CreditCard, ArrowDownToLine, BarChart3, Check, X, Search, 
-  LogOut, Shield, Gift, Plus, Trash2, RefreshCw 
-} from 'lucide-react';
+import { Users, CreditCard, ArrowDownToLine, BarChart3, Check, X, Search, LogOut, Shield, TrendingUp, Gift, Bell, DollarSign, Trash2, Eye, Copy, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { createClient } from '@supabase/supabase-js';
-
-// Local storage helpers
+import { PRODUCTS } from '@/constants/products';
 import {
-  getRechargeOrders, getWithdrawOrders,
+  getRechargeOrders, getWithdrawOrders, getUserProducts,
   approveRechargeOrder, rejectRechargeOrder, approveWithdrawOrder, rejectWithdrawOrder,
-  formatUGX, getGiftCodes, createGiftCode, deleteGiftCode
+  formatUGX, updateUser, addTransaction, getTransactions,
+  getGiftCodes, createGiftCode, deleteGiftCode,
+  getPasswordResets, approvePasswordReset, rejectPasswordReset
 } from '@/lib/storage';
 
 const supabase = createClient(
@@ -28,414 +26,132 @@ export default function AdminPage() {
   const [supaUsers, setSupaUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
 
-  // Gift code creation state
-  const [newCode, setNewCode] = useState('');
-  const [newAmount, setNewAmount] = useState('');
-  const [newMaxUses, setNewMaxUses] = useState('1');
+  useEffect(() => {
+    const fetchUsers = async () => {
+      setLoadingUsers(true);
+      const { data } = await supabase.from('users').select('*').order('created_at', { ascending: false });
+      if (data) setSupaUsers(data);
+      setLoadingUsers(false);
+    };
+    fetchUsers();
+    const fetchPesa = async () => {
+      const { data } = await supabase.from('recharges').select('*').order('created_at', { ascending: false }).limit(100);
+      if (data) setPesaRecharges(data);
+    };
+    fetchPesa();
+  }, [refresh, tab]);
 
-  // ---- AUTH CHECK ----
   useEffect(() => {
     const raw = localStorage.getItem('legend_user');
     if (!raw) { navigate('/login'); return; }
     try {
       const u = JSON.parse(raw);
-      const isAdmin = u.is_admin || u.isadmin || u.isAdmin || u.phone === '0750000000';
-      if (!isAdmin) {
-        toast.error('Access denied. Admin privileges required.');
-        navigate('/home');
-      }
-    } catch { 
-      navigate('/login'); 
-    }
-  }, [navigate]);
+      const isAdmin = u.is_admin || u.isadmin || u.isAdmin || u.phone === '0746085840' || u.phone === '0750000000';
+      if (!isAdmin) { navigate('/home'); }
+    } catch { navigate('/login'); }
+  }, []);
 
-  // ---- FETCH SUPABASE DATA ----
-  useEffect(() => {
-    const fetchUsers = async () => {
-      setLoadingUsers(true);
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Supabase users error:', error);
-        toast.error(error.message);
-      } else {
-        setSupaUsers(data || []);
-      }
-      setLoadingUsers(false);
-    };
-
-    const fetchPesa = async () => {
-      const { data } = await supabase
-        .from('recharges')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100);
-      if (data) setPesaRecharges(data);
-    };
-
-    fetchUsers();
-    fetchPesa();
-  }, [refresh]);
-
-  // Derived user lists
-  const allUsers = supaUsers.map(u => ({
-    id: u.id,
-    phone: u.phone,
-    balance: u.balance || 0,
-    referral_code: u.referral_code,
-    referred_by: u.referred_by,
-    created_at: u.created_at,
-    isAdmin: !!(u.is_admin || u.isadmin),
-    level: u.level || 1,
+  const allUsers = supaUsers.map((u) => ({
+    id: u.id, phone: u.phone, balance: u.balance || 0,
+    referral_code: u.referral_code, referralCode: u.referral_code,
+    referred_by: u.referred_by, created_at: u.created_at, createdAt: u.created_at,
+    isAdmin:!!(u.is_admin || u.isadmin), level: 1,
   }));
+  const users = allUsers.filter((u) =>!u.isAdmin);
+  const adminUser = allUsers.find((u) => u.isAdmin);
+  const filteredUsers = users.filter((u) => u.phone.toLowerCase().includes(searchQ.toLowerCase()));
 
-  const users = allUsers.filter(u => !u.isAdmin);
-  const adminUser = allUsers.find(u => u.isAdmin);
-  const filteredUsers = users.filter(u => u.phone.toLowerCase().includes(searchQ.toLowerCase()));
-
-  // Local storage orders
   const rechargeOrders = getRechargeOrders();
   const withdrawOrders = getWithdrawOrders();
-  const giftCodes = getGiftCodes();
+  const userProducts = getUserProducts();
+  const pendingRecharge = rechargeOrders.filter((o) => o.status === 'pending');
+  const pendingWithdraw = withdrawOrders.filter((o) => o.status === 'pending');
+  const pendingPesa = pesaRecharges.filter((r) => r.status!== 'completed');
+  const totalBalance = users.reduce((s, u) => s + u.balance, 0);
+  const totalRecharge = rechargeOrders.filter((o) => o.status === 'completed').reduce((s, o) => s + o.amount, 0);
+  const passwordResets = getPasswordResets();
+  const pendingResets = passwordResets.filter((r) => r.status === 'pending');
 
-  const pendingRecharge = rechargeOrders.filter(o => o.status === 'pending');
-  const pendingWithdraw = withdrawOrders.filter(o => o.status === 'pending');
+  const getReferralCount = (user) => allUsers.filter((x) => x.referred_by === user.referral_code).length;
 
-  const getReferralCount = (user) => {
-    return allUsers.filter(x => x.referred_by === user.referral_code).length;
-  };
+  const tabs = [
+    { key: 'overview', label: 'Overview', icon: BarChart3 },
+    { key: 'users', label: 'Users', icon: Users, badge: users.length },
+    { key: 'recharge', label: 'Recharge', icon: CreditCard, badge: pendingRecharge.length },
+    { key: 'pesajet', label: 'PesaJet', icon: DollarSign, badge: pendingPesa.length },
+    { key: 'withdraw', label: 'Withdraw', icon: ArrowDownToLine, badge: pendingWithdraw.length },
+    { key: 'products', label: 'Products', icon: TrendingUp },
+    { key: 'resets', label: 'Resets', icon: Shield, badge: pendingResets.length },
+    { key: 'gifts', label: 'Tools', icon: Gift },
+  ];
 
-  const triggerRefresh = () => setRefresh(prev => prev + 1);
-
-  // ---- HANDLERS ----
-  const handleApproveRecharge = (id) => {
-    approveRechargeOrder(id);
-    toast.success('Recharge approved!');
-    triggerRefresh();
-  };
-
-  const handleRejectRecharge = (id) => {
-    rejectRechargeOrder(id);
-    toast.info('Recharge rejected');
-    triggerRefresh();
-  };
-
-  const handleApproveWithdraw = (id) => {
-    approveWithdrawOrder(id);
-    toast.success('Withdrawal approved!');
-    triggerRefresh();
-  };
-
-  const handleRejectWithdraw = (id) => {
-    rejectWithdrawOrder(id);
-    toast.info('Withdrawal rejected');
-    triggerRefresh();
-  };
-
-  const handleCreateGiftCode = (e) => {
-    e.preventDefault();
-    if (!newCode || !newAmount) {
-      toast.error('Please enter a code and amount');
-      return;
-    }
-    createGiftCode({ code: newCode, amount: Number(newAmount), maxUses: Number(newMaxUses) });
-    toast.success('Gift code created successfully!');
-    setNewCode('');
-    setNewAmount('');
-    setNewMaxUses('1');
-    triggerRefresh();
-  };
-
-  const handleDeleteGiftCode = (code) => {
-    deleteGiftCode(code);
-    toast.info('Gift code deleted');
-    triggerRefresh();
-  };
-
-  if (loadingUsers) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] text-white">
-        <div className="flex items-center gap-2">
-          <RefreshCw className="animate-spin text-[#c9a84c]" size={20} />
-          <span>Loading admin panel...</span>
-        </div>
-      </div>
-    );
-  }
+  if (loadingUsers) return <div className="min-h-screen flex items-center justify-center bg-black text-white">Loading users...</div>;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white pb-10">
-      {/* Top Bar */}
-      <div className="flex items-center justify-between p-4 bg-[#111] border-b border-[#2a2a2a] sticky top-0 z-20">
-        <div className="flex items-center gap-2">
-          <Shield size={18} className="text-[#c9a84c]" />
-          <span className="font-black text-sm sm:text-base">Admin Panel LEGEND</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={triggerRefresh} 
-            className="p-2 rounded-xl bg-[#1e1e1e] hover:bg-[#2a2a2a] text-gray-300"
-            title="Refresh Data"
-          >
-            <RefreshCw size={15} />
-          </button>
-          <button 
-            onClick={() => { localStorage.clear(); navigate('/login'); }} 
-            className="p-2 rounded-xl bg-[#1e1e1e] hover:bg-[#2a2a2a] text-red-400"
-            title="Logout"
-          >
-            <LogOut size={15} />
-          </button>
-        </div>
+    <div className="min-h-screen bg-[#0a0a0a] text-white">
+      <div className="flex items-center justify-between p-4 bg-[#111] border-b border-[#2a2a2a]">
+        <div className="flex items-center gap-2"><Shield size={18} className="text-[#c9a84c]" /><span className="font-black">Admin LEGEND - {supaUsers.length} users</span></div>
+        <button onClick={() => { localStorage.clear(); navigate('/login'); }} className="w-8 h-8 rounded-xl bg-[#1e1e1e] flex items-center justify-center"><LogOut size={15} /></button>
       </div>
 
-      {/* Tabs Bar */}
-      <div className="flex items-center gap-2 overflow-x-auto p-3 bg-[#111] border-b border-[#222]">
-        {[
-          { id: 'overview', label: 'Overview', icon: BarChart3 },
-          { id: 'users', label: 'Users', icon: Users, badge: users.length },
-          { id: 'recharges', label: 'Recharges', icon: CreditCard, badge: pendingRecharge.length },
-          { id: 'withdrawals', label: 'Withdrawals', icon: ArrowDownToLine, badge: pendingWithdraw.length },
-          { id: 'gifts', label: 'Gift Codes', icon: Gift },
-        ].map(t => {
+      <div className="flex gap-0 overflow-x-auto bg-[#111] border-b border-[#1a1a1a]">
+        {tabs.map((t) => {
           const Icon = t.icon;
-          const isActive = tab === t.id;
           return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
-                isActive ? 'bg-[#c9a84c] text-black' : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#222]'
-              }`}
-            >
-              <Icon size={14} />
-              <span>{t.label}</span>
-              {t.badge !== undefined && (
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                  isActive ? 'bg-black text-[#c9a84c]' : 'bg-[#333] text-gray-200'
-                }`}>
-                  {t.badge}
-                </span>
-              )}
+            <button key={t.key} onClick={() => setTab(t.key)} className="flex-shrink-0 flex items-center gap-1.5 px-3 py-3 text-xs font-semibold relative" style={tab === t.key? { color: '#c9a84c', borderBottom: '2px solid #c9a84c' } : { color: '#555' }}>
+              <Icon size={13} />{t.label}{t.badge!== undefined && t.badge > 0 && <span className="absolute top-1.5 right-1 w-4 h-4 rounded-full text-[9px] font-black text-black flex items-center justify-center gold-gradient">{t.badge}</span>}
             </button>
           );
         })}
       </div>
 
-      {/* Content Area */}
-      <div className="p-4 max-w-4xl mx-auto">
-        {/* OVERVIEW TAB */}
+      <div className="p-4 pb-8">
         {tab === 'overview' && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-[#151515] border border-[#2a2a2a] p-4 rounded-2xl">
-                <p className="text-gray-500 text-xs font-medium">Total Users</p>
-                <p className="text-2xl font-black mt-1">{supaUsers.length}</p>
-              </div>
-              <div className="bg-[#151515] border border-[#2a2a2a] p-4 rounded-2xl">
-                <p className="text-gray-500 text-xs font-medium">Pending Recharges</p>
-                <p className="text-2xl font-black text-amber-400 mt-1">{pendingRecharge.length}</p>
-              </div>
-              <div className="bg-[#151515] border border-[#2a2a2a] p-4 rounded-2xl">
-                <p className="text-gray-500 text-xs font-medium">Pending Withdrawals</p>
-                <p className="text-2xl font-black text-amber-400 mt-1">{pendingWithdraw.length}</p>
-              </div>
-              <div className="bg-[#151515] border border-[#2a2a2a] p-4 rounded-2xl">
-                <p className="text-gray-500 text-xs font-medium">Active Gift Codes</p>
-                <p className="text-2xl font-black text-green-400 mt-1">{giftCodes.length}</p>
-              </div>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl p-4 bg-[#151515] border border-[#2a2a2a]"><p className="text-3xl font-black text-[#c9a84c]">{users.length}</p><p className="text-gray-500 text-xs">Total Users</p></div>
+              <div className="rounded-2xl p-4 bg-[#151515] border border-[#2a2a2a]"><p className="text-3xl font-black text-yellow-400">{pendingRecharge.length}</p><p className="text-gray-500 text-xs">Pending Recharge</p></div>
+              <div className="rounded-2xl p-4 bg-[#151515] border border-[#2a2a2a]"><p className="text-3xl font-black text-red-400">{pendingWithdraw.length}</p><p className="text-gray-500 text-xs">Pending Withdraw</p></div>
+              <div className="rounded-2xl p-4 bg-[#151515] border border-[#2a2a2a]"><p className="text-3xl font-black text-green-400">{userProducts.filter((p) => p.status === 'active').length}</p><p className="text-gray-500 text-xs">Active Products</p></div>
             </div>
-
-            {adminUser && (
-              <div className="bg-[#151515] border border-[#2a2a2a] p-4 rounded-2xl">
-                <h3 className="text-xs text-gray-400 uppercase tracking-wider font-bold mb-2">Admin Account Details</h3>
-                <p className="text-sm font-bold">Phone: {adminUser.phone}</p>
-                <p className="text-xs text-gray-400">Referral Code: {adminUser.referral_code}</p>
-              </div>
-            )}
+            <div className="rounded-2xl p-4 bg-[#151515] border border-yellow-900/20"><p className="text-gray-500 text-xs">Total Platform Balance</p><p className="text-[#c9a84c] text-2xl font-black">{formatUGX(totalBalance)}</p></div>
+            <div className="rounded-2xl p-4 bg-[#151515] border border-[#2a2a2a]"><p className="text-gray-500 text-xs">Total Completed Recharges</p><p className="text-white text-2xl font-black">{formatUGX(totalRecharge)}</p></div>
           </div>
         )}
 
-        {/* USERS TAB */}
         {tab === 'users' && (
-          <div>
-            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 mb-3 bg-[#1a1a1a] border border-[#333]">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ background: '#1a1a1a', border: '1px solid #333' }}>
               <Search size={14} className="text-gray-500" />
-              <input 
-                value={searchQ} 
-                onChange={e => setSearchQ(e.target.value)} 
-                placeholder="Search by phone..." 
-                className="flex-1 bg-transparent outline-none text-sm text-white placeholder-gray-500" 
-              />
+              <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search by phone..." className="flex-1 bg-transparent outline-none text-sm text-white" />
             </div>
-
-            <p className="text-gray-400 text-xs mb-3">
-              Showing {filteredUsers.length} of {users.length} users
-            </p>
-
-            <div className="space-y-3">
-              {filteredUsers.map(user => (
-                <div key={user.id} className="rounded-2xl p-4 bg-[#151515] border border-[#2a2a2a]">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-bold text-sm">{user.phone}</p>
-                      <p className="text-gray-500 text-[11px]">
-                        {user.created_at ? new Date(user.created_at).toLocaleString() : 'N/A'} • Referred by: {user.referred_by || 'NONE'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 mt-3">
-                    <div className="rounded-xl p-2 text-center bg-[#1e1e1e]">
-                      <p className="text-[#c9a84c] font-bold text-xs sm:text-sm">{formatUGX(user.balance)}</p>
-                      <p className="text-gray-600 text-[10px]">Balance</p>
-                    </div>
-                    <div className="rounded-xl p-2 text-center bg-[#1e1e1e]">
-                      <p className="text-white font-bold text-xs sm:text-sm">{user.referral_code}</p>
-                      <p className="text-gray-600 text-[10px]">Code</p>
-                    </div>
-                    <div className="rounded-xl p-2 text-center bg-[#1e1e1e]">
-                      <p className="text-green-400 font-bold text-xs sm:text-sm">{getReferralCount(user)} refs</p>
-                      <p className="text-gray-600 text-[10px]">Referrals</p>
-                    </div>
-                  </div>
+            <p className="text-gray-400 text-xs">{filteredUsers.length} users (Total {supaUsers.length}) - Admin: {adminUser?.phone} Code: {adminUser?.referral_code}</p>
+            {filteredUsers.map((user) => (
+              <div key={user.id} className="rounded-2xl p-4" style={{ background: '#151515', border: '1px solid #2a2a2a' }}>
+                <p className="font-bold text-sm">{user.phone}</p>
+                <p className="text-gray-500 text-xs">{user.created_at? new Date(user.created_at).toLocaleString() : ''} - Referred by: {user.referred_by || 'NONE'}</p>
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  <div className="rounded-xl p-2 text-center bg-[#1e1e1e]"><p className="text-[#c9a84c] font-bold text-sm">{formatUGX(user.balance)}</p><p className="text-gray-600 text-[10px]">Balance</p></div>
+                  <div className="rounded-xl p-2 text-center bg-[#1e1e1e]"><p className="text-white font-bold text-sm">{user.referral_code}</p><p className="text-gray-600 text-[10px]">My Code</p></div>
+                  <div className="rounded-xl p-2 text-center bg-[#1e1e1e]"><p className="text-green-400 font-bold text-sm">{getReferralCount(user)} refs</p><p className="text-gray-600 text-[10px]">Referrals</p></div>
                 </div>
-              ))}
-
-              {filteredUsers.length === 0 && (
-                <p className="text-center text-gray-500 py-10 text-sm">No users found</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* RECHARGES TAB */}
-        {tab === 'recharges' && (
-          <div className="space-y-3">
-            <h3 className="text-sm font-bold text-gray-400">Recharge Requests</h3>
-            {rechargeOrders.length === 0 ? (
-              <p className="text-center text-gray-500 py-10 text-sm">No recharge requests found</p>
-            ) : (
-              rechargeOrders.map(order => (
-                <div key={order.id} className="p-4 bg-[#151515] border border-[#2a2a2a] rounded-2xl flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-sm">{order.phone || 'User'}</p>
-                    <p className="text-[#c9a84c] font-black text-sm">{formatUGX(order.amount)}</p>
-                    <p className="text-gray-500 text-[10px]">{new Date(order.createdAt || order.created_at).toLocaleString()}</p>
-                    <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      order.status === 'approved' ? 'bg-green-500/10 text-green-400' :
-                      order.status === 'rejected' ? 'bg-red-500/10 text-red-400' : 'bg-amber-500/10 text-amber-400'
-                    }`}>
-                      {order.status.toUpperCase()}
-                    </span>
-                  </div>
-                  {order.status === 'pending' && (
-                    <div className="flex gap-2">
-                      <button onClick={() => handleApproveRecharge(order.id)} className="p-2.5 bg-green-500/20 text-green-400 rounded-xl border border-green-500/30">
-                        <Check size={16} />
-                      </button>
-                      <button onClick={() => handleRejectRecharge(order.id)} className="p-2.5 bg-red-500/20 text-red-400 rounded-xl border border-red-500/30">
-                        <X size={16} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* WITHDRAWALS TAB */}
-        {tab === 'withdrawals' && (
-          <div className="space-y-3">
-            <h3 className="text-sm font-bold text-gray-400">Withdrawal Requests</h3>
-            {withdrawOrders.length === 0 ? (
-              <p className="text-center text-gray-500 py-10 text-sm">No withdrawal requests found</p>
-            ) : (
-              withdrawOrders.map(order => (
-                <div key={order.id} className="p-4 bg-[#151515] border border-[#2a2a2a] rounded-2xl flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-sm">{order.phone || 'User'}</p>
-                    <p className="text-red-400 font-black text-sm">{formatUGX(order.amount)}</p>
-                    <p className="text-gray-500 text-[10px]">{new Date(order.createdAt || order.created_at).toLocaleString()}</p>
-                    <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      order.status === 'approved' ? 'bg-green-500/10 text-green-400' :
-                      order.status === 'rejected' ? 'bg-red-500/10 text-red-400' : 'bg-amber-500/10 text-amber-400'
-                    }`}>
-                      {order.status.toUpperCase()}
-                    </span>
-                  </div>
-                  {order.status === 'pending' && (
-                    <div className="flex gap-2">
-                      <button onClick={() => handleApproveWithdraw(order.id)} className="p-2.5 bg-green-500/20 text-green-400 rounded-xl border border-green-500/30">
-                        <Check size={16} />
-                      </button>
-                      <button onClick={() => handleRejectWithdraw(order.id)} className="p-2.5 bg-red-500/20 text-red-400 rounded-xl border border-red-500/30">
-                        <X size={16} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* GIFT CODES TAB */}
-        {tab === 'gifts' && (
-          <div className="space-y-4">
-            <form onSubmit={handleCreateGiftCode} className="p-4 bg-[#151515] border border-[#2a2a2a] rounded-2xl space-y-3">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Create Gift Code</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <input 
-                  type="text" 
-                  placeholder="CODE (e.g. BONUS500)" 
-                  value={newCode}
-                  onChange={e => setNewCode(e.target.value.toUpperCase())}
-                  className="bg-[#1e1e1e] border border-[#333] px-3 py-2 rounded-xl text-sm outline-none focus:border-[#c9a84c]"
-                />
-                <input 
-                  type="number" 
-                  placeholder="Amount (UGX)" 
-                  value={newAmount}
-                  onChange={e => setNewAmount(e.target.value)}
-                  className="bg-[#1e1e1e] border border-[#333] px-3 py-2 rounded-xl text-sm outline-none focus:border-[#c9a84c]"
-                />
-                <input 
-                  type="number" 
-                  placeholder="Max Uses" 
-                  value={newMaxUses}
-                  onChange={e => setNewMaxUses(e.target.value)}
-                  className="bg-[#1e1e1e] border border-[#333] px-3 py-2 rounded-xl text-sm outline-none focus:border-[#c9a84c]"
-                />
               </div>
-              <button type="submit" className="w-full py-2.5 bg-[#c9a84c] text-black font-bold rounded-xl flex items-center justify-center gap-2 text-sm">
-                <Plus size={16} /> Create Code
-              </button>
-            </form>
-
-            <div className="space-y-2">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Existing Gift Codes</h3>
-              {giftCodes.length === 0 ? (
-                <p className="text-gray-500 text-xs">No active gift codes</p>
-              ) : (
-                giftCodes.map(code => (
-                  <div key={code.code} className="p-3 bg-[#151515] border border-[#2a2a2a] rounded-xl flex items-center justify-between">
-                    <div>
-                      <p className="font-bold text-sm text-[#c9a84c]">{code.code}</p>
-                      <p className="text-xs text-gray-400">{formatUGX(code.amount)} • Max uses: {code.maxUses || 1}</p>
-                    </div>
-                    <button onClick={() => handleDeleteGiftCode(code.code)} className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
+            ))}
           </div>
         )}
+
+        {tab === 'pesajet' && (
+          <div className="space-y-3">
+            <div className="flex justify-between"><p className="text-gray-400 text-xs">{pesaRecharges.length} orders</p><button onClick={() => setRefresh(r => r+1)} className="text-xs px-3 py-1.5 rounded-full bg-yellow-500 text-black font-bold">Refresh</button></div>
+            {pesaRecharges.map((r) => (<div key={r.id} className="rounded-2xl p-4 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{r.amount} - {r.phone} - {r.status} - {r.provider}</p><p className="text-gray-500 text-xs">Ref: {r.reference}</p></div>))}
+          </div>
+        )}
+
+        {tab === 'recharge' && (<div className="space-y-2">{rechargeOrders.map((o) => (<div key={o.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{o.amount} - {o.status}</p></div>))}</div>)}
+        {tab === 'withdraw' && (<div className="space-y-2">{withdrawOrders.map((o) => (<div key={o.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{o.amount} - {o.status}</p></div>))}</div>)}
+        {tab === 'products' && (<div className="space-y-2">{PRODUCTS.map((p) => (<div key={p.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{p.name} - {formatUGX(p.price)}</p></div>))}</div>)}
+        {tab === 'resets' && (<div className="space-y-2">{passwordResets.map((r) => (<div key={r.id} className="rounded-xl p-3 bg-[#151515] border border-[#2a2a2a]"><p className="text-white text-sm">{r.phone} - {r.status}</p></div>))}</div>)}
+        {tab === 'gifts' && (<div className="rounded-xl p-4 bg-[#151515] border border-[#2a2a2a]"><p className="text-white">Gift codes: {getGiftCodes().length}</p></div>)}
       </div>
     </div>
   );
