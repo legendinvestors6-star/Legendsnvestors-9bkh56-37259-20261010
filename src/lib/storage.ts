@@ -1,5 +1,5 @@
 import type { User, Transaction, RechargeOrder, WithdrawOrder, UserProduct } from '@/types';
-import { REGISTRATION_BONUS, PRODUCTS, MTN_ACCOUNT, MTN_NAME } from '@/constants/products';
+import { REGISTRATION_BONUS, PRODUCTS, MTN_ACCOUNT, MTN_NAME, LEVEL1_RATE, LEVEL2_RATE, LEVEL3_RATE, CHECKIN_REWARD } from '@/constants/products';
 import { createClient } from '@supabase/supabase-js';
 
 // Supabase for cloud (kept for compatibility; safe if env vars are undefined)
@@ -66,6 +66,7 @@ export function getCurrentUser(): User | null {
         referralCode: u.referral_code || u.referralCode || '',
         referredBy: u.referred_by || u.referredBy || undefined,
         checkInDays: u.checkInDays || 0,
+        lastCheckIn: u.lastCheckIn || undefined,
         createdAt: u.created_at || new Date().toISOString(),
         isAdmin: u.phone === ADMIN_PHONE || u.is_admin || u.isAdmin || false,
         bankCard: u.bankCard || null,
@@ -97,6 +98,9 @@ export function updateUser(userId: string, updates: Partial<User>): User | null 
       if (u.id === userId) {
         const updated = { ...u, ...updates, balance: (updates as any).balance ?? u.balance } as any;
         if ((updates as any).referralCode) updated.referral_code = (updates as any).referralCode;
+        if ((updates as any).lastCheckIn) updated.lastCheckIn = (updates as any).lastCheckIn;
+        if ((updates as any).checkInDays !== undefined) updated.checkInDays = (updates as any).checkInDays;
+        if ((updates as any).cumulativeIncome !== undefined) updated.cumulativeIncome = (updates as any).cumulativeIncome;
         localStorage.setItem('legend_user', JSON.stringify(updated));
       }
     }
@@ -250,6 +254,22 @@ export function getNextPayoutMs(userId?: string): number {
   return Math.max(0, next.getTime() - now.getTime());
 }
 
+// Perform a daily check-in for a user. Returns { success: boolean, reward?: number, message?: string }
+export function performCheckIn(userId: string): { success: boolean; reward?: number; message?: string } {
+  try {
+    const user = getUsers().find(u => u.id === userId);
+    if (!user) return { success: false, message: 'User not found' };
+    const today = new Date().toDateString();
+    if (user.lastCheckIn === today) return { success: false, message: 'Already checked in today' };
+
+    const reward = CHECKIN_REWARD || 300; // fixed daily reward
+    const newCheckInDays = (user.checkInDays || 0) + 1;
+    updateUser(userId, { balance: (user.balance || 0) + reward, cumulativeIncome: (user.cumulativeIncome || 0) + reward, lastCheckIn: today, checkInDays: newCheckInDays } as any);
+    addTransaction({ userId, type: 'checkin', amount: reward, status: 'completed', description: 'Daily check-in reward' } as any);
+    return { success: true, reward };
+  } catch (e) { return { success: false, message: 'Check-in failed' }; }
+}
+
 export function purchaseProduct(userId: string, productId: number, price: number, dailyIncome: number, term: number): { success: boolean; message: string } {
   const user = getUsers().find(u => u.id === userId) || getCurrentUser();
   if (!user) return { success: false, message: 'User not found' };
@@ -264,5 +284,83 @@ export function purchaseProduct(userId: string, productId: number, price: number
   return { success: true, message: 'Product purchased successfully' };
 }
 
+// Gift code helpers
+export function getGiftCodes(): GiftCode[] { return safeParse<GiftCode[]>(localStorage.getItem(KEYS.GIFT_CODES), []); }
+export function createGiftCode(amount: number, note?: string, expiresAt?: string): GiftCode {
+  const codes = getGiftCodes();
+  const codeObj: GiftCode = { id: generateId(), code: generateReferralCode(), amount, createdAt: new Date().toISOString(), note: note || '', expiresAt } as any;
+  localStorage.setItem(KEYS.GIFT_CODES, JSON.stringify([codeObj, ...codes]));
+  return codeObj;
+}
+export function deleteGiftCode(id: string): boolean {
+  const codes = getGiftCodes();
+  const idx = codes.findIndex(c => c.id === id);
+  if (idx === -1) return false;
+  codes.splice(idx, 1);
+  localStorage.setItem(KEYS.GIFT_CODES, JSON.stringify(codes));
+  return true;
+}
+
+// Password reset helpers
+export function getPasswordResets(): PasswordResetRequest[] { return safeParse<PasswordResetRequest[]>(localStorage.getItem(KEYS.PASSWORD_RESETS), []); }
+export function createPasswordResetRequest(phone: string, newPassword: string, note?: string): PasswordResetRequest {
+  const reqs = getPasswordResets();
+  const req: PasswordResetRequest = { id: generateId(), phone, newPassword, status: 'pending', createdAt: new Date().toISOString(), note };
+  localStorage.setItem(KEYS.PASSWORD_RESETS, JSON.stringify([req, ...reqs]));
+  return req;
+}
+export function approvePasswordReset(id: string): boolean {
+  const reqs = getPasswordResets();
+  const idx = reqs.findIndex(r => r.id === id);
+  if (idx === -1) return false;
+  reqs[idx].status = 'approved';
+  reqs[idx].resolvedAt = new Date().toISOString();
+  localStorage.setItem(KEYS.PASSWORD_RESETS, JSON.stringify(reqs));
+  // apply password to user if exists
+  const req = reqs[idx];
+  const users = getUsers();
+  const uidx = users.findIndex(u => u.phone === req.phone);
+  if (uidx !== -1) {
+    users[uidx].password = req.newPassword;
+    saveUsers(users);
+    // update legend_user if currently logged in
+    const supaRaw = localStorage.getItem('legend_user');
+    if (supaRaw) {
+      try { const su = JSON.parse(supaRaw); if (su.phone === req.phone) { su.password = req.newPassword; localStorage.setItem('legend_user', JSON.stringify(su)); } } catch {}
+    }
+  }
+  return true;
+}
+export function rejectPasswordReset(id: string, note?: string): boolean {
+  const reqs = getPasswordResets();
+  const idx = reqs.findIndex(r => r.id === id);
+  if (idx === -1) return false;
+  reqs[idx].status = 'rejected';
+  reqs[idx].resolvedAt = new Date().toISOString();
+  reqs[idx].note = note || reqs[idx].note;
+  localStorage.setItem(KEYS.PASSWORD_RESETS, JSON.stringify(reqs));
+  return true;
+}
+
+// Team helpers
+export function getTeamMembers(userId: string) {
+  const users = getUsers();
+  const level1 = users.filter(u => u.referredBy === userId || (u as any).referred_by === userId);
+  const level1Ids = level1.map(u => u.id);
+  const level2 = users.filter(u => level1Ids.includes(u.referredBy as any) || level1Ids.includes((u as any).referred_by));
+  const level2Ids = level2.map(u => u.id);
+  const level3 = users.filter(u => level2Ids.includes(u.referredBy as any) || level2Ids.includes((u as any).referred_by));
+  return { level1, level2, level3 };
+}
+
+export function getTeamCommissions(userId: string) {
+  const { level1, level2, level3 } = getTeamMembers(userId);
+  const sum = (arr: User[]) => arr.reduce((s, u) => s + (u.balance || 0), 0);
+  const c1 = sum(level1) * (LEVEL1_RATE || 0.27);
+  const c2 = sum(level2) * (LEVEL2_RATE || 0.02);
+  const c3 = sum(level3) * (LEVEL3_RATE || 0.01);
+  return { level1: Math.floor(c1), level2: Math.floor(c2), level3: Math.floor(c3) };
+}
+
 // small exports for compatibility
-export { supabase };
+export { supabase, getGiftCodes, createGiftCode, deleteGiftCode, getPasswordResets, createPasswordResetRequest, approvePasswordReset, rejectPasswordReset, getTeamMembers, getTeamCommissions };
