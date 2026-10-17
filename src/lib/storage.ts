@@ -18,6 +18,7 @@ const KEYS = {
   USER_PRODUCTS: 'legend_user_products',
   GIFT_CODES: 'legend_gift_codes',
   PASSWORD_RESETS: 'legend_password_resets',
+  LAST_DAILY_CREDIT: 'legend_last_daily_credit',
 };
 
 export interface PasswordResetRequest { id: string; phone: string; newPassword: string; status: 'pending' | 'approved' | 'rejected'; createdAt: string; resolvedAt?: string; note?: string; }
@@ -215,6 +216,39 @@ export function rejectWithdrawOrder(orderId: string): boolean {
 export function getUserProducts(userId?: string): UserProduct[] { return safeParse<UserProduct[]>(localStorage.getItem(KEYS.USER_PRODUCTS), []).filter(p => !userId || (p as any).userId === userId); }
 
 export function saveUserProducts(products: UserProduct[]): void { localStorage.setItem(KEYS.USER_PRODUCTS, JSON.stringify(products)); }
+
+// Credits daily income once per calendar day per user. Returns { credited: number }
+export function creditDailyIncome(userId: string): { credited: number } {
+  try {
+    const user = getUsers().find(u => u.id === userId);
+    if (!user) return { credited: 0 };
+    const products = getUserProducts(userId).filter(p => p.status === 'active');
+    if (!products.length) return { credited: 0 };
+    const dailySum = products.reduce((s, p) => s + ((p as any).dailyIncome || 0), 0);
+    if (!dailySum) return { credited: 0 };
+
+    // only credit once per calendar day
+    const lastMap = safeParse<Record<string, number>>(localStorage.getItem(KEYS.LAST_DAILY_CREDIT), {});
+    const last = lastMap[userId] || 0;
+    const now = Date.now();
+    const startOfToday = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime();
+    if (last >= startOfToday) return { credited: 0 }; // already credited today
+
+    // credit
+    updateUser(userId, { balance: (user.balance || 0) + dailySum, cumulativeIncome: (user.cumulativeIncome || 0) + dailySum } as any);
+    addTransaction({ userId, type: 'daily-income', amount: dailySum, status: 'completed', description: 'Daily product income' } as any);
+    lastMap[userId] = now;
+    localStorage.setItem(KEYS.LAST_DAILY_CREDIT, JSON.stringify(lastMap));
+    return { credited: dailySum };
+  } catch { return { credited: 0 }; }
+}
+
+// Returns ms until next payout (start of next calendar day)
+export function getNextPayoutMs(userId?: string): number {
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  return Math.max(0, next.getTime() - now.getTime());
+}
 
 export function purchaseProduct(userId: string, productId: number, price: number, dailyIncome: number, term: number): { success: boolean; message: string } {
   const user = getUsers().find(u => u.id === userId) || getCurrentUser();
