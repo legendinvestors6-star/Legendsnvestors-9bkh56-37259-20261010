@@ -1,142 +1,126 @@
-import { useState } from "react"
-import { createClient } from '@supabase/supabase-js'
-import { toast } from 'sonner'
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { Gift, Phone, Wallet } from 'lucide-react';
 
-const MIN = 30000
+export default function RechargePage() {
+  const [amount, setAmount] = useState('30000');
+  const [phone, setPhone] = useState('');
+  const [provider, setProvider] = useState<'mtn' | 'airtel'>('airtel');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'stk_sent'>('idle');
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL as string,
-  import.meta.env.VITE_SUPABASE_ANON_KEY as string
-)
-
-export default function Recharge(){
- const [amount,setAmount]=useState("")
- const [phone,setPhone]=useState("")
- const [loading,setLoading]=useState(false)
- const [polling, setPolling] = useState(false)
- const quick = [30000, 50000, 100000, 200000]
-
- const startAutoPolling = (reference: string, numAmount: number) => {
-   setPolling(true)
-   toast.success("Pending... Enter PIN on phone!")
-   let attempts = 0
-   const interval = setInterval(async () => {
-     attempts++
-     if(attempts > 60) {
-       clearInterval(interval)
-       setPolling(false)
-       setLoading(false)
-       alert("Still pending. If you paid, it will auto-credit shortly. Check Recharge History.")
-       window.location.href = "/recharge-history"
-       return
-     }
-     const { data } = await supabase.from('recharges').select('status').eq('reference', reference).single()
-     if(data?.status === 'completed') {
-       clearInterval(interval)
-       try {
-         const users = JSON.parse(localStorage.getItem('users') || '[]')
-         const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}')
-         const idx = users.findIndex((u:any) => u.id === currentUser.id || u.phone === currentUser.phone)
-         if(idx!== -1) {
-           users[idx].balance = (users[idx].balance || 0) + numAmount
-           localStorage.setItem('users', JSON.stringify(users))
-           const updatedCurrent = {...currentUser, balance: users[idx].balance}
-           localStorage.setItem('currentUser', JSON.stringify(updatedCurrent))
-         } else {
-           currentUser.balance = (currentUser.balance || 0) + numAmount
-           localStorage.setItem('currentUser', JSON.stringify(currentUser))
-         }
-         setPolling(false)
-         setLoading(false)
-         toast.success(`✅ ${numAmount.toLocaleString()} UGX credited!`)
-         setTimeout(() => window.location.href = "/", 1500)
-       } catch(e) {
-         window.location.href = "/"
-       }
-     }
-   }, 3000)
- }
-
- const handleRecharge = async () => {
-  const num = Number(amount);
-  if (!num || num < MIN) {
-    alert("Minimum is UGX 30,000");
-    return;
-  }
-  if (!phone.trim()) {
-    alert("Enter phone number");
-    return;
-  }
-  setLoading(true);
-  try {
-    const cleanPhone = phone.trim();
-    const raw = cleanPhone.replace('+256','').replace(/\s/g,'');
-    const withoutZero = raw.startsWith('0')? raw.slice(1) : raw;
-    const autoProvider = (withoutZero.startsWith('75') || withoutZero.startsWith('70') || withoutZero.startsWith('74'))? 'airtel' : 'mtn';
-
-    const res = await fetch("/api/payments/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: num, phone: cleanPhone, userId: cleanPhone, provider: autoProvider })
-    });
-
-    const text = await res.text()
-    let data: any
-    try { data = JSON.parse(text) } catch { throw new Error(text.slice(0,300) || "Empty response") }
-
-    if(!res.ok) {
-      const realError = data?.pesajet_data?.message || data?.pesajet_data?.error || data?.raw || JSON.stringify(data).slice(0,400)
-      throw new Error(realError || "Payment failed")
+  const handleRecharge = async () => {
+    if (!amount || !phone) { toast.error('Fill amount and phone'); return; }
+    setStatus('loading');
+    try {
+      const res = await fetch('/api/payments/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: Number(amount), phone, provider }),
+      });
+      const data = await res.json();
+      if (data.status === 'pending') {
+        setStatus('stk_sent');
+        toast.success('STK sent! Check your phone');
+      } else {
+        toast.error(data.message || 'Failed');
+        setStatus('idle');
+      }
+    } catch {
+      toast.error('Network error');
+      setStatus('idle');
     }
+  };
 
-    const reference = data.reference
-    if(reference) {
-      startAutoPolling(reference, num)
-    } else {
-      alert(`STK sent to ${phone}!`)
-      window.location.href = "/recharge-history"
-    }
-  } catch (e: any) {
-    alert("Error: " + e.message)
-    setLoading(false)
-  }
- }
+  return (
+    <div className="app-container min-h-screen" style={{ background: '#0a0a0a' }}>
+      {/* Header like Register */}
+      <div className="px-6 pt-14 pb-6 text-center">
+        <h1 className="text-2xl font-black text-[#c9a84c]">Recharge Account</h1>
+        <p className="text-gray-500 text-xs mt-2">Add funds to a phone number instantly</p>
+      </div>
 
- return(
-  <div className="bg-[#0e0e0e] min-h-screen p-4 pb-28 text-white">
-   <div className="max-w-md mx-auto">
-    <div className="bg-[#1a1a1a] border border-[#d4af37]/50 rounded-[20px] p-5 text-center">
-      <h1 className="font-bold text-[18px] text-[#f8e7a0]">Recharge Account</h1>
-      <p className="text-[12px] text-gray-400">{polling? "Waiting for PIN..." : "Enter details"}</p>
+      {/* Card - SAME as Register */}
+      <div className="mx-4 rounded-3xl p-6" style={{ background: '#151515', border: '1px solid #2a2a2a' }}>
+        {status === 'stk_sent' ? (
+          <div className="text-center py-8">
+            <div className="w-16 h-16 mx-auto gold-gradient rounded-full flex items-center justify-center mb-4">⏳</div>
+            <p className="text-white font-bold">STK sent! Enter PIN on phone</p>
+            <p className="text-gray-500 text-sm mt-2">Check {phone} and confirm payment</p>
+            <button onClick={() => setStatus('idle')} className="mt-6 text-[#c9a84c] text-sm font-semibold">Recharge again</button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Amount */}
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1.5 block">Amount (UGX)</label>
+              <div className="flex items-center rounded-xl px-3 py-3.5" style={{ background: '#1f1f1f', border: '1.5px solid #333' }}>
+                <Wallet size={15} className="text-gray-500 mr-2" />
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  placeholder="50000"
+                  className="flex-1 outline-none text-sm text-white bg-transparent placeholder-gray-600"
+                />
+              </div>
+              <p className="text-[11px] text-gray-600 mt-1">Minimum UGX 30000 • Max UGX 1,500,000</p>
+            </div>
+
+            {/* Provider - SAME style */}
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1.5 block">Provider</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setProvider('mtn')}
+                  className="py-3.5 rounded-xl text-sm font-bold"
+                  style={{
+                    background: provider === 'mtn' ? 'rgba(201,168,76,0.15)' : '#1f1f1f',
+                    border: `1.5px solid ${provider === 'mtn' ? '#c9a84c' : '#333'}`,
+                    color: provider === 'mtn' ? '#c9a84c' : 'white'
+                  }}
+                >
+                  MTN
+                </button>
+                <button
+                  onClick={() => setProvider('airtel')}
+                  className="py-3.5 rounded-xl text-sm font-bold"
+                  style={{
+                    background: provider === 'airtel' ? 'rgba(201,168,76,0.15)' : '#1f1f1f',
+                    border: `1.5px solid ${provider === 'airtel' ? '#c9a84c' : '#333'}`,
+                    color: provider === 'airtel' ? '#c9a84c' : 'white'
+                  }}
+                >
+                  Airtel Uganda
+                </button>
+              </div>
+            </div>
+
+            {/* Phone */}
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1.5 block">Phone Number</label>
+              <div className="flex items-center rounded-xl px-3 py-3.5" style={{ background: '#1f1f1f', border: '1.5px solid #333' }}>
+                <Phone size={15} className="text-gray-500 mr-2" />
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  placeholder="07XXXXXXXXXX"
+                  className="flex-1 outline-none text-sm text-white bg-transparent placeholder-gray-600"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleRecharge}
+              disabled={status === 'loading'}
+              className="w-full gold-gradient py-4 rounded-xl font-bold text-black text-base mt-2 disabled:opacity-60"
+            >
+              {status === 'loading' ? 'Waiting for PIN...' : 'Recharge'}
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="h-8" />
     </div>
-    {polling && (
-      <div className="bg-[#f8e7a0]/10 border border-[#f8e7a0] rounded-[20px] p-5 mt-4 text-center animate-pulse">
-        <p className="text-[#f8e7a0] font-bold">⏳ Pending - Check phone for PIN</p>
-      </div>
-    )}
-    <div className="bg-[#1a1a1a] border border-[#f8e7a0] rounded-[20px] p-5 mt-4">
-      <label className="text-[13px] font-bold text-[#f8e7a0]">Recharge Amount</label>
-      <div className="flex mt-2 bg-[#0e0e0e] rounded-xl border border-[#3a3210] px-3 items-center">
-        <span className="font-bold text-[#f8e7a0] text-sm">UGX</span>
-        <input value={amount} onChange={e=>setAmount(e.target.value)} type="number" placeholder="Enter amount" className="flex-1 bg-transparent p-3 text-[16px] font-bold text-white outline-none" />
-      </div>
-      <div className="flex gap-2 mt-3">
-        {quick.map(v=>(
-          <button key={v} onClick={()=>setAmount(String(v))} className={`text-[12px] px-3 py-1.5 rounded-full border font-semibold ${amount==String(v)? "bg-[#f8e7a0] text-black" : "bg-[#2a2410] text-[#f8e7a0]"}`}>{v/1000}k</button>
-        ))}
-      </div>
-    </div>
-    <div className="bg-[#1a1a1a] border border-[#f8e7a0] rounded-[20px] p-5 mt-4">
-      <label className="text-[13px] font-bold text-[#f8e7a0]">Phone Number</label>
-      <div className="flex mt-2 bg-[#0e0e0e] rounded-xl border border-[#3a3210] px-3 items-center">
-        <span className="text-gray-400">📱</span>
-        <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Enter phone number" type="tel" className="flex-1 bg-transparent p-3 text-[15px] text-white outline-none" />
-      </div>
-      <button onClick={handleRecharge} disabled={loading || polling || Number(amount) < MIN} className="w-full mt-5 bg-gradient-to-b from-[#f8e7a0] to-[#d4af37] disabled:from-gray-600 text-black py-4 rounded-xl font-extrabold text-[16px]">
-        {polling? "⏳ Waiting for PIN..." : loading? "Processing..." : "Proceed to Recharge"}
-      </button>
-    </div>
-   </div>
-  </div>
- )
-}
+  );
+                  }
