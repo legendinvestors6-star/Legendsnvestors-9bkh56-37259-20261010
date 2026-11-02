@@ -310,4 +310,45 @@ export default function AdminPage() {
           <div className="space-y-3">
             {withdrawOrders.map((order: any) => (
               <div key={order.id} className="rounded-2xl p-4" style={{ background: "#151515" }}>
-                <
+                <div className="flex justify-between"><p className="text-white font-bold">{formatUGX(order.amount)}</p><span className="text-[10px] px-2 py-1 rounded-full" style={{background: order.status==='pending'?'rgba(251,191,36,0.1)':'rgba(34,197,94,0.1)', color: order.status==='pending'?'#fbbf24':'#22c55e'}}>{order.status}</span></div>
+                <p className="text-gray-400 text-xs mt-1">{users.find(u=>u.id===order.user_id)?.phone}</p>
+                {order.status === "pending" && <div className="grid grid-cols-2 gap-2 mt-3"><button onClick={() => handleApproveWithdraw(order.id)} className="py-2.5 rounded-xl text-xs font-bold text-black" style={{background:"#c9a84c"}}>Approve</button><button onClick={() => handleRejectWithdraw(order.id)} className="py-2.5 rounded-xl text-xs font-bold text-red-400" style={{ background: "rgba(239,68,68,0.1)" }}>Reject & Refund</button></div>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === "gifts" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl p-4" style={{ background: "#151515", border: "1px solid #2a2a2a" }}>
+              <h3 className="text-white font-bold mb-3">Create Gift Code</h3>
+              <div className="space-y-3">
+                <input value={newGiftCode} onChange={e => setNewGiftCode(e.target.value.toUpperCase())} placeholder="Code e.g. LEGEND100" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-3 text-sm text-white" />
+                <input value={newGiftAmount} onChange={e => setNewGiftAmount(e.target.value)} type="number" placeholder="Amount e.g. 5000" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-3 text-sm text-white" />
+                <button onClick={handleCreateGift} className="w-full py-3 rounded-xl font-bold text-black" style={{background:"#c9a84c"}}>Create Gift</button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {giftCodes.map((g: any) => (
+                <div key={g.id} className="rounded-xl p-3 flex justify-between" style={{ background: "#151515" }}>
+                  <div><p className="text-white font-bold text-sm">{g.code}</p><p className="text-gray-500 text-xs">{formatUGX(g.amount)} • {g.is_used ? 'Used' : 'Active'}</p></div>
+                  <button onClick={() => handleDeleteGift(g.id)} className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center"><Trash2 size={12} className="text-red-400" /></button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab === "resets" && (
+          <div className="space-y-3">
+            {passwordResets.map((r: any) => (
+              <div key={r.id} className="rounded-2xl p-4" style={{ background: "#151515" }}>
+                <div className="flex justify-between"><p className="text-white font-bold text-sm">{r.phone}</p><span className="text-[10px] px-2 py-1 rounded-full" style={{background: r.status==='pending'?'rgba(251,191,36,0.1)':'rgba(34,197,94,0.1)'}}>{r.status}</span></div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+            }
